@@ -5,7 +5,7 @@ from datetime import datetime, date, timedelta
 import io
 
 # 1. CONFIGURACIÓN
-st.set_page_config(page_title="ECU-STRAT ULTIMATE V18.1", layout="wide")
+st.set_page_config(page_title="ECU-STRAT MASTER V18.2", layout="wide")
 
 # 2. INICIALIZACIÓN DE DATOS
 if 'db_movimientos' not in st.session_state: st.session_state.db_movimientos = []
@@ -32,7 +32,6 @@ with st.sidebar:
                 elif tipo_cat == "Gasto Fijo": st.session_state.cat_fijos.append(nuevo_item)
                 st.rerun()
 
-    # CÁLCULO DE BALANCE SEGURO
     def calc_bal(s):
         if not st.session_state.db_movimientos: return 0.0
         df = pd.DataFrame(st.session_state.db_movimientos)
@@ -53,58 +52,76 @@ t_v, t_f, t_h, t_p, t_c, t_sim, t_rep = st.tabs([
 with t_v:
     st.subheader(f"Ingresos - {sede_actual}")
     with st.form("f_v", clear_on_submit=True):
-        c1, c2, c3 = st.columns(3)
-        fv = c1.date_input("Fecha", date.today())
-        mv = c2.number_input("Monto ($)", min_value=0.0)
-        nv = c3.text_input("Nota", "Venta Diaria")
+        c1, c2 = st.columns(2)
+        fv, mv = c1.date_input("Fecha", date.today()), c2.number_input("Monto ($)", min_value=0.0)
         if st.form_submit_button("Guardar Venta"):
-            st.session_state.db_movimientos.append({
-                "Fecha": fv, "Tipo": "Venta", "Concepto": "Venta", 
-                "Monto": mv, "Sede": sede_actual, "Estado": "Ingreso", "Nota": nv
-            })
+            st.session_state.db_movimientos.append({"Fecha": fv, "Tipo": "Venta", "Concepto": "Venta", "Monto": mv, "Sede": sede_actual, "Estado": "Ingreso"})
             st.rerun()
-    
     if st.session_state.db_movimientos:
-        df_v = pd.DataFrame(st.session_state.db_movimientos)
-        df_v_sede = df_v[(df_v['Tipo'] == "Venta") & (df_v['Sede'] == sede_actual)]
-        st.write("### Historial de Ventas")
-        st.dataframe(df_v_sede, use_container_width=True)
+        df = pd.DataFrame(st.session_state.db_movimientos)
+        st.dataframe(df[(df['Tipo'] == "Venta") & (df['Sede'] == sede_actual)], use_container_width=True)
 
-# --- TAB SIMULADOR (CORREGIDO) ---
+# --- TAB FIJOS ---
+with t_f:
+    st.subheader("🏢 Gastos Operativos")
+    with st.form("f_f", clear_on_submit=True):
+        f_c = st.selectbox("Concepto Fijo", st.session_state.cat_fijos)
+        f_m = st.number_input("Monto Fijo ($)", min_value=0.0)
+        if st.form_submit_button("Pagar Fijo"):
+            st.session_state.db_movimientos.append({"Fecha": date.today(), "Tipo": "Gasto Fijo", "Concepto": f_c, "Monto": f_m, "Sede": sede_actual, "Estado": "Pagado"})
+            st.rerun()
+
+# --- TAB HORMIGA ---
+with t_h:
+    st.subheader("🐜 Gastos Hormiga")
+    with st.form("f_h", clear_on_submit=True):
+        h_c = st.selectbox("Concepto", st.session_state.cat_hormiga)
+        h_m = st.number_input("Monto Gasto ($)", min_value=0.0)
+        if st.form_submit_button("Registrar Gasto"):
+            st.session_state.db_movimientos.append({"Fecha": date.today(), "Tipo": "Hormiga", "Concepto": h_c, "Monto": h_m, "Sede": sede_actual, "Estado": "Pagado"})
+            st.rerun()
+
+# --- TAB PROVEEDORES ---
+with t_p:
+    st.subheader("🚛 Cuentas por Pagar")
+    with st.form("f_p", clear_on_submit=True):
+        p_c = st.selectbox("Proveedor", st.session_state.cat_proveedores)
+        p_m = st.number_input("Monto Deuda", min_value=0.0)
+        p_v = st.date_input("Vencimiento")
+        if st.form_submit_button("Guardar Deuda"):
+            st.session_state.db_movimientos.append({"Fecha": date.today(), "Vencimiento": p_v, "Tipo": "Proveedor", "Concepto": p_c, "Monto": p_m, "Sede": sede_actual, "Estado": "Pendiente"})
+            st.rerun()
+    for i, m in enumerate(st.session_state.db_movimientos):
+        if m['Tipo'] == "Proveedor" and m['Estado'] == "Pendiente":
+            st.warning(f"Deuda con {m['Concepto']}: ${m['Monto']}")
+            if st.button(f"Pagar {i}"): m['Estado'] = "Pagado"; st.rerun()
+
+# --- TAB COBROS ---
+with t_c:
+    st.subheader("📞 Cuentas por Cobrar")
+    with st.form("f_cob", clear_on_submit=True):
+        c_c = st.selectbox("Cliente", st.session_state.cat_clientes)
+        c_m = st.number_input("Monto Crédito", min_value=0.0)
+        if st.form_submit_button("Guardar Crédito"):
+            st.session_state.db_movimientos.append({"Fecha": date.today(), "Tipo": "Cobro", "Concepto": c_c, "Monto": c_m, "Sede": sede_actual, "Estado": "Pendiente"})
+            st.rerun()
+
+# --- TAB SIMULADOR ---
 with t_sim:
     st.header("🚀 Simulador de Crecimiento")
-    
-    # Validación para evitar el KeyError
     v_actual = 0.0
     if st.session_state.db_movimientos:
         df_sim = pd.DataFrame(st.session_state.db_movimientos)
-        if not df_sim.empty and 'Tipo' in df_sim.columns:
+        if 'Tipo' in df_sim.columns:
             v_actual = df_sim[(df_sim['Tipo'] == 'Venta') & (df_sim['Sede'] == sede_actual)]['Monto'].sum()
-    
-    c_inv = st.number_input("Costo de la nueva inversión/personal ($)", min_value=0.0, value=100.0)
-    margen = st.slider("Margen de Ganancia (%)", 10, 90, 30)
-    
-    if margen > 0:
-        necesidad = c_inv / (margen / 100)
-        st.metric("Venta mensual extra necesaria", f"$ {round(necesidad, 2)}")
-        
-        if v_actual > 0:
-            crecimiento = (necesidad / v_actual) * 100
-            st.warning(f"Debes incrementar tus ventas en un **{round(crecimiento, 1)}%**")
-        else:
-            st.info("ℹ️ Registra ventas primero para calcular el % de incremento necesario.")
+    c_inv = st.number_input("Costo nueva inversión ($)", min_value=0.0, value=100.0)
+    margen = st.slider("Margen (%)", 10, 90, 30)
+    necesidad = c_inv / (margen / 100)
+    st.metric("Venta extra necesaria", f"$ {round(necesidad, 2)}")
 
 # --- TAB REPORTES ---
 with t_rep:
-    st.header("📊 Análisis de Negocio")
+    st.header("📊 Análisis")
     if st.session_state.db_movimientos:
-        df_rep = pd.DataFrame(st.session_state.db_movimientos)
-        op = st.selectbox("Ver:", ["Estructura de Gastos", "Comparativa Sedes"])
-        if op == "Estructura de Gastos":
-            fig = px.pie(df_rep, values="Monto", names="Tipo", hole=0.4)
-            st.plotly_chart(fig, use_container_width=True)
-        elif op == "Comparativa Sedes":
-            res_sede = df_rep.groupby("Sede")["Monto"].sum().reset_index()
-            st.plotly_chart(px.bar(res_sede, x="Sede", y="Monto", color="Sede"), use_container_width=True)
-    else:
-        st.info("No hay datos para mostrar gráficos.")
+        df_r = pd.DataFrame(st.session_state.db_movimientos)
+        st.plotly_chart(px.bar(df_r.groupby("Sede")["Monto"].sum().reset_index(), x="Sede", y="Monto", color="Sede"))
