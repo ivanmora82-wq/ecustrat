@@ -19,15 +19,19 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- INICIALIZACIÓN DE DATOS (Simulación de Base de Datos) ---
-if 'caja_total' not in st.session_state: st.session_state.caja_total = 1000.0
-if 'db_proveedores' not in st.session_state: st.session_state.db_proveedores = []
-if 'db_cobros' not in st.session_state: st.session_state.db_cobros = []
-if 'historial_ventas' not in st.session_state: st.session_state.historial_ventas = []
-if 'gastos_hormiga' not in st.session_state: st.session_state.gastos_hormiga = []
+# --- INICIALIZACIÓN DE DATOS (Estado de Sesión) ---
+if 'caja_total' not in st.session_state: 
+    st.session_state.caja_total = 1000.0
+if 'db_proveedores' not in st.session_state: 
+    st.session_state.db_proveedores = []
+if 'db_cobros' not in st.session_state: 
+    st.session_state.db_cobros = []
+if 'historial_ventas' not in st.session_state: 
+    st.session_state.historial_ventas = []
+if 'gastos_hormiga' not in st.session_state: 
+    st.session_state.gastos_hormiga = []
 
-# --- BARRA LATERAL (CONTROL DE ACCESO Y EMPRESA) ---
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/553/553813.png", width=100)
+# --- BARRA LATERAL ---
 st.sidebar.title("ECU-STRAT PRO")
 empresa = st.sidebar.text_input("Empresa", "Mi Negocio")
 sucursal = st.sidebar.selectbox("Sede", ["Matriz", "Sucursal 1", "Sucursal 2"])
@@ -41,7 +45,7 @@ st.title(f"🛡️ {empresa}")
 st.caption(f"Panel de Control Financiero | {sucursal}")
 
 # --- TABS DE NAVEGACIÓN ---
-t_balance, t_caja, t_gastos, t_prov, t_cobros, t_premium = st.tabs([
+t_balance, t_caja, t_gastos, t_prov, t_cobros, t_reporte = st.tabs([
     "📊 Balance", "📦 Caja Diaria", "💸 Gastos", "🚛 Proveedores", "📞 Cobros", "📈 Reportes Pro"
 ])
 
@@ -58,10 +62,10 @@ with t_balance:
     st.markdown("---")
     st.subheader("Visualización de Liquidez")
     df_bal = pd.DataFrame({
-        'Estado': ['Disponible', 'Comprometido', 'En la Calle'],
+        'Estado': ['Disponible Real', 'Comprometido (Deuda)', 'En la Calle (Cobros)'],
         'Monto': [st.session_state.caja_total - deuda_p, deuda_p, por_cobrar]
     })
-    fig_bal = px.pie(df_bal, names='Estado', values='Monto', hole=0.4, color_discrete_sequence=px.colors.sequential.RdBu)
+    fig_bal = px.pie(df_bal, names='Estado', values='Monto', hole=0.4, template="plotly_dark")
     st.plotly_chart(fig_bal, use_container_width=True)
 
 # --- TAB 2: CAJA DIARIA ---
@@ -80,3 +84,25 @@ with t_caja:
 
 # --- TAB 3: GASTOS ---
 with t_gastos:
+    st.subheader("Gastos Fijos")
+    f_c1, f_c2, f_c3, f_c4 = st.columns(4)
+    arriendo = f_c1.number_input("Arriendo", value=0.0)
+    luz = f_c2.number_input("Luz/Agua", value=0.0)
+    wifi = f_c3.number_input("Internet", value=0.0)
+    sueldos = f_c4.number_input("Sueldos", value=0.0)
+    
+    st.markdown("---")
+    st.subheader("🐜 Gastos Hormiga (Diarios)")
+    h_c1, h_c2 = st.columns(2)
+    desc_h = h_c1.text_input("Concepto (Taxi, Refrigerio...)")
+    monto_h = h_c2.number_input("Costo Gasto ($)", min_value=0.0, key="hormiga_input")
+    if st.button("Registrar Salida"):
+        if monto_h > 0:
+            st.session_state.caja_total -= monto_h
+            st.session_state.gastos_hormiga.append({"Concepto": desc_h, "Monto": monto_h})
+            st.rerun()
+
+# --- TAB 4: PROVEEDORES ---
+with t_prov:
+    st.subheader("Cuentas por Pagar")
+    with st.expander("Registrar Factura"):
