@@ -6,115 +6,103 @@ from datetime import datetime
 # 1. CONFIGURACIÓN
 st.set_page_config(page_title="ECU-STRAT PRO", layout="wide")
 
-# 2. INICIALIZACIÓN DE DATOS
-if 'caja_total' not in st.session_state:
-    st.session_state.caja_total = 1000.0
-if 'db_proveedores' not in st.session_state:
-    st.session_state.db_proveedores = []
-if 'db_cobros' not in st.session_state:
-    st.session_state.db_cobros = []
-if 'historial_ventas' not in st.session_state:
-    st.session_state.historial_ventas = []
-if 'gastos_hormiga' not in st.session_state:
-    st.session_state.gastos_hormiga = []
+# 2. BASES DE DATOS (En memoria)
+if 'caja_total' not in st.session_state: st.session_state.caja_total = 1000.0
+if 'db_proveedores' not in st.session_state: st.session_state.db_proveedores = []
+if 'db_cobros' not in st.session_state: st.session_state.db_cobros = []
+if 'db_hormiga' not in st.session_state: st.session_state.db_hormiga = []
+if 'historial_ventas' not in st.session_state: st.session_state.historial_ventas = []
 
 # 3. BARRA LATERAL
-st.sidebar.title("ECU-STRAT PRO")
+st.sidebar.title("🛡️ ECU-STRAT PRO")
 empresa = st.sidebar.text_input("Empresa", "Mi Negocio")
-sucursal = st.sidebar.selectbox("Sede", ["Matriz", "Sucursal 1", "Sucursal 2"])
 is_premium = st.sidebar.toggle("🔓 Modo Premium", value=False)
-st.sidebar.metric("Balance Disponible", f"$ {round(st.session_state.caja_total, 2)}")
+st.sidebar.metric("Balance Real", f"$ {round(st.session_state.caja_total, 2)}")
 
-st.title(f"🛡️ {empresa} - {sucursal}")
+st.title(f"Gestión de {empresa}")
 
 # 4. TABS
-t_balance, t_caja, t_gastos, t_prov, t_cobros, t_reporte = st.tabs([
-    "📊 Balance", "📦 Caja Diaria", "💸 Gastos", "🚛 Proveedores", "📞 Cobros", "📈 Reportes"
+t_bal, t_caja, t_hormiga, t_prov, t_cobros, t_rep = st.tabs([
+    "📊 Balance", "📦 Caja Diaria", "🐜 Gastos Hormiga", "🚛 Proveedores", "📞 Cobros", "📈 Reportes"
 ])
 
-with t_balance:
-    deuda_p = sum(p['Monto'] for p in st.session_state.db_proveedores if p['Estado'] == 'Pendiente')
-    por_cobrar = sum(c['Total'] - c['Abonos'] for c in st.session_state.db_cobros if c['Estado'] == 'Pendiente')
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Efectivo + Banco", f"$ {round(st.session_state.caja_total, 2)}")
-    c2.metric("Deuda (Por Pagar)", f"$ {round(deuda_p, 2)}", delta_color="inverse")
-    c3.metric("En la Calle (Por Cobrar)", f"$ {round(por_cobrar, 2)}")
-    st.markdown("---")
-    df_bal = pd.DataFrame({
-        'Estado': ['Disponible', 'Deuda', 'Cobros'],
-        'Monto': [st.session_state.caja_total - deuda_p, deuda_p, por_cobrar]
-    })
-    fig_bal = px.pie(df_bal, names='Estado', values='Monto', hole=0.4, template="plotly_dark")
-    st.plotly_chart(fig_bal, use_container_width=True)
+# --- GASTOS HORMIGA (ENTRADAS INFINITAS) ---
+with t_hormiga:
+    st.subheader("Registro de Gastos Diarios")
+    with st.form("form_hormiga", clear_on_submit=True):
+        col_h1, col_h2 = st.columns(2)
+        concepto = col_h1.text_input("Concepto (Ej: Taxi, Jabón, Fundas)")
+        monto = col_h2.number_input("Monto ($)", min_value=0.0, step=0.5)
+        if st.form_submit_state := st.form_submit_button("Añadir Gasto"):
+            if monto > 0:
+                st.session_state.caja_total -= monto
+                st.session_state.db_hormiga.append({
+                    "Fecha": datetime.now().strftime("%Y-%m-%d"),
+                    "Concepto": concepto.capitalize(),
+                    "Monto": monto
+                })
+                st.rerun()
 
-with t_caja:
-    st.subheader("Cierre de Caja")
-    v_bruta = st.number_input("Venta del Día ($)", min_value=0.0)
-    sencillo = st.number_input("Sencillo para mañana ($)", min_value=0.0)
-    if st.button("Finalizar Día"):
-        neto = v_bruta - sencillo
-        st.session_state.caja_total += neto
-        st.session_state.historial_ventas.append({"Fecha": datetime.now(), "Monto": neto})
-        st.success("Día cerrado con éxito.")
-        st.rerun()
+    if st.session_state.db_hormiga:
+        df_h = pd.DataFrame(st.session_state.db_hormiga)
+        st.write("### Detalle de Gastos")
+        st.table(df_h)
+        
+        # Reporte de en qué gastó más
+        st.write("### 🔍 ¿En qué gastas más?")
+        resumen_h = df_h.groupby("Concepto")["Monto"].sum().reset_index()
+        fig_h = px.bar(resumen_h, x="Concepto", y="Monto", color="Concepto", template="plotly_dark")
+        st.plotly_chart(fig_h, use_container_width=True)
 
-with t_gastos:
-    st.subheader("Gastos Fijos")
-    col_f1, col_f2 = st.columns(2)
-    arriendo = col_f1.number_input("Arriendo", value=0.0)
-    luz = col_f2.number_input("Luz/Agua", value=0.0)
-    wifi = col_f1.number_input("Internet", value=0.0)
-    sueldos = col_f2.number_input("Sueldos", value=0.0)
-    st.markdown("---")
-    st.subheader("🐜 Gastos Hormiga")
-    desc_h = st.text_input("Concepto")
-    monto_h = st.number_input("Monto ($)", min_value=0.0, key="hormiga")
-    if st.button("Registrar Gasto"):
-        st.session_state.caja_total -= monto_h
-        st.session_state.gastos_hormiga.append({"Concepto": desc_h, "Monto": monto_h})
-        st.rerun()
-
+# --- PROVEEDORES (CANTIDAD INFINITA) ---
 with t_prov:
-    st.subheader("Proveedores")
-    p_nom = st.text_input("Nombre Proveedor")
-    p_mon = st.number_input("Monto Factura", min_value=0.0)
-    if st.button("Guardar Factura"):
-        st.session_state.db_proveedores.append({"Proveedor": p_nom, "Monto": p_mon, "Estado": "Pendiente"})
-        st.rerun()
+    st.subheader("Mis Proveedores")
+    with st.form("form_prov", clear_on_submit=True):
+        p_nom = st.text_input("Nombre del Proveedor")
+        p_val = st.number_input("Monto de Factura", min_value=0.0)
+        if st.form_submit_button("Registrar Nuevo Proveedor"):
+            st.session_state.db_proveedores.append({"Nombre": p_nom, "Monto": p_val, "Estado": "Pendiente"})
+            st.rerun()
+    
     for i, p in enumerate(st.session_state.db_proveedores):
         if p['Estado'] == "Pendiente":
-            st.write(f"⚠️ {p['Proveedor']}: ${p['Monto']}")
-            if st.button(f"Pagar a {p['Proveedor']}", key=f"p_{i}"):
+            col_p1, col_p2 = st.columns([3, 1])
+            col_p1.write(f"🚛 **{p['Nombre']}**: ${p['Monto']}")
+            if col_p2.button(f"Pagar {i}", key=f"btnp_{i}"):
                 st.session_state.caja_total -= p['Monto']
                 st.session_state.db_proveedores[i]['Estado'] = "Pagado"
                 st.rerun()
 
+# --- COBROS (MÚLTIPLES CLIENTES) ---
 with t_cobros:
-    st.subheader("Cobranzas")
-    cl_nom = st.text_input("Cliente")
-    cl_mon = st.number_input("Monto Crédito", min_value=0.0)
-    if st.button("Guardar Crédito"):
-        st.session_state.db_cobros.append({"Cliente": cl_nom, "Total": cl_mon, "Abonos": 0.0, "Estado": "Pendiente"})
-        st.rerun()
+    st.subheader("Cuentas por Cobrar")
+    with st.form("form_cobros", clear_on_submit=True):
+        c_cli = st.text_input("Nombre del Cliente")
+        c_val = st.number_input("Monto a Cobrar", min_value=0.0)
+        if st.form_submit_button("Registrar Nuevo Cobro"):
+            st.session_state.db_cobros.append({"Cliente": c_cli, "Total": c_val, "Abonos": 0.0, "Estado": "Pendiente"})
+            st.rerun()
+
     for i, c in enumerate(st.session_state.db_cobros):
         if c['Estado'] == "Pendiente":
-            st.write(f"👤 {c['Cliente']} - Pendiente: ${c['Total'] - c['Abonos']}")
-            ab = st.number_input(f"Abono de {c['Cliente']}", key=f"ab_{i}")
-            if st.button(f"Cobrar Abono {i}"):
-                st.session_state.db_cobros[i]['Abonos'] += ab
-                st.session_state.caja_total += ab
+            col_c1, col_c2, col_c3 = st.columns([2, 1, 1])
+            col_c1.write(f"👤 **{c['Cliente']}** (Falta: ${c['Total'] - c['Abonos']})")
+            abono = col_c2.number_input(f"Abono de {c['Cliente']}", key=f"abono_{i}")
+            if col_c3.button(f"Cobrar {i}", key=f"btnc_{i}"):
+                st.session_state.db_cobros[i]['Abonos'] += abono
+                st.session_state.caja_total += abono
                 if st.session_state.db_cobros[i]['Abonos'] >= c['Total']:
                     st.session_state.db_cobros[i]['Estado'] = "Pagado"
                 st.rerun()
 
-with t_reporte:
+# --- REPORTES (PERIODOS) ---
+with t_rep:
     if not is_premium:
-        st.error("🔒 Función Premium")
-        st.info("Suscríbete por $15/mes para ver reportes detallados.")
+        st.error("🔒 Reportes Quincenales y Mensuales son funciones Premium.")
     else:
-        st.success("Acceso Premium")
-        total_v = sum(v['Monto'] for v in st.session_state.historial_ventas)
-        total_g = arriendo + luz + wifi + sueldos + sum(h['Monto'] for h in st.session_state.gastos_hormiga)
-        st.metric("Ventas Totales", f"$ {total_v}")
-        st.metric("Gastos Totales", f"$ {total_g}")
-        st.bar_chart(pd.DataFrame({"Monto": [total_v, total_g]}, index=["Ingresos", "Egresos"]))
+        st.success("Acceso Premium: Reporte Detallado")
+        if st.session_state.db_hormiga:
+            df_rep = pd.DataFrame(st.session_state.db_hormiga)
+            st.write("### Resumen de Gastos por Categoría")
+            fig_rep = px.pie(df_rep, names="Concepto", values="Monto", hole=0.5, title="Distribución de Gastos Hormiga")
+            st.plotly_chart(fig_rep, use_container_width=True)
