@@ -5,7 +5,7 @@ from datetime import datetime, date, timedelta
 import io
 
 # 1. CONFIGURACIÓN
-st.set_page_config(page_title="ECU-STRAT PRO V12", layout="wide")
+st.set_page_config(page_title="ECU-STRAT PRO V12.1", layout="wide")
 
 # 2. INICIALIZACIÓN DE DATOS
 if 'caja_total' not in st.session_state: st.session_state.caja_total = 0.0
@@ -21,16 +21,15 @@ def generar_excel(df):
         df.to_excel(writer, index=False, sheet_name='Movimientos')
     return output.getvalue()
 
-# 3. BARRA LATERAL (ADMINISTRACIÓN Y DESCARGAS)
+# 3. BARRA LATERAL (ADMINISTRACIÓN Y CATÁLOGOS)
 with st.sidebar:
     st.title("🛡️ ECU-STRAT PRO")
     empresa = st.text_input("Nombre de Empresa", "Mi Negocio")
     st.divider()
-    st.metric("EFECTIVO REAL DISPONIBLE", f"$ {round(st.session_state.caja_total, 2)}")
+    st.metric("EFECTIVO EN CAJA", f"$ {round(st.session_state.caja_total, 2)}")
     st.divider()
     
-    # GESTIÓN DE CATÁLOGOS
-    st.subheader("⚙️ Configurar Catálogos")
+    st.subheader("⚙️ Gestión de Catálogos")
     with st.expander("➕ Conceptos de Gasto"):
         n_h = st.text_input("Nuevo Gasto")
         if st.button("Añadir Gasto"):
@@ -43,72 +42,82 @@ with st.sidebar:
             st.session_state.cat_proveedores.append(n_p)
             st.rerun()
 
+    with st.expander("➕ Clientes (Crédito)"):
+        n_c = st.text_input("Nuevo Cliente")
+        if st.button("Añadir Cliente"):
+            st.session_state.cat_clientes.append(n_c)
+            st.rerun()
+
     st.divider()
-    
-    # BOTÓN DE DESCARGA EXCEL
-    st.subheader("📥 Exportar Datos")
     if st.session_state.db_movimientos:
         df_export = pd.DataFrame(st.session_state.db_movimientos)
-        excel_data = generar_excel(df_export)
-        st.download_button(
-            label="📊 Descargar Reporte Excel",
-            data=excel_data,
-            file_name=f"Reporte_{empresa}_{date.today()}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    else:
-        st.info("Sin datos para exportar")
+        st.download_button(label="📊 Descargar Reporte Excel", data=generar_excel(df_export), 
+                           file_name=f"Reporte_{empresa}.xlsx", mime="application/vnd.ms-excel")
 
 # 4. CUERPO PRINCIPAL (TABS)
 t_caja, t_hormiga, t_prov, t_cobros, t_rep = st.tabs([
     "📅 Ventas/Caja", "🐜 Gastos Hormiga", "🚛 Proveedores", "📞 Cobros", "📈 REPORTES"
 ])
 
-# --- GASTOS HORMIGA ---
+# --- TAB VENTAS/CAJA ---
+with t_caja:
+    st.subheader("💰 Registro de Ventas e Ingresos")
+    with st.form("f_ventas", clear_on_submit=True):
+        colv1, colv2 = st.columns(2)
+        v_monto = colv1.number_input("Monto de Venta ($)", min_value=0.0)
+        v_desc = colv2.text_input("Nota / Factura #", "Venta Diaria")
+        if st.form_submit_button("Registrar Ingreso"):
+            st.session_state.caja_total += v_monto
+            st.session_state.db_movimientos.append({
+                "Fecha": date.today(), "Tipo": "Venta", "Concepto": "Ingreso de Caja", "Monto": v_monto, "Nota": v_desc
+            })
+            st.rerun()
+
+# --- TAB GASTOS HORMIGA ---
 with t_hormiga:
-    st.subheader("🐜 Registro de Gastos Diarios")
+    st.subheader("🐜 Gastos Diarios Menores")
     with st.form("h_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        con = col1.selectbox("Concepto (Catálogo)", st.session_state.cat_hormiga)
-        mon = col2.number_input("Monto ($)", min_value=0.0)
-        if st.form_submit_button("Registrar"):
+        colh1, colh2 = st.columns(2)
+        con = colh1.selectbox("Concepto", st.session_state.cat_hormiga)
+        mon = colh2.number_input("Monto ($)", min_value=0.0)
+        if st.form_submit_button("Registrar Gasto"):
             st.session_state.caja_total -= mon
             st.session_state.db_movimientos.append({
-                "Fecha": date.today(), "Tipo": "Gasto Hormiga", "Concepto": con, "Monto": mon
+                "Fecha": date.today(), "Tipo": "Gasto Hormiga", "Concepto": con, "Monto": mon, "Nota": ""
             })
             st.rerun()
-    
-    # Lista con opción de Borrar
-    for i, m in enumerate(st.session_state.db_movimientos):
-        if m['Tipo'] == "Gasto Hormiga":
-            c_l1, c_l2, c_l3 = st.columns([3, 1, 1])
-            c_l1.write(f"🔸 {m['Concepto']}")
-            c_l2.write(f"${m['Monto']}")
-            if c_l3.button("🗑️", key=f"del_{i}"):
-                st.session_state.caja_total += m['Monto']
-                st.session_state.db_movimientos.pop(i)
-                st.rerun()
 
-# --- PROVEEDORES ---
+# --- TAB PROVEEDORES ---
 with t_prov:
-    st.subheader("🚛 Cuentas por Pagar")
+    st.subheader("🚛 Cuentas por Pagar (Proveedores)")
     with st.form("p_form", clear_on_submit=True):
-        prov_sel = st.selectbox("Proveedor", st.session_state.cat_proveedores)
-        mon_p = st.number_input("Monto Factura ($)", min_value=0.0)
-        f_p = st.date_input("Fecha Límite")
+        p_sel = st.selectbox("Seleccione Proveedor", st.session_state.cat_proveedores)
+        p_mon = st.number_input("Monto Factura ($)", min_value=0.0)
+        p_fec = st.date_input("Fecha de Vencimiento")
         if st.form_submit_button("Registrar Deuda"):
             st.session_state.db_movimientos.append({
-                "Fecha": f_p, "Tipo": "Proveedor", "Concepto": prov_sel, "Monto": mon_p, "Estado": "Pendiente"
+                "Fecha": p_fec, "Tipo": "Proveedor", "Concepto": p_sel, "Monto": p_mon, "Estado": "Pendiente", "Nota": "Deuda"
             })
             st.rerun()
 
-# --- REPORTES ---
+# --- TAB COBROS ---
+with t_cobros:
+    st.subheader("📞 Cuentas por Cobrar (Créditos a Clientes)")
+    with st.form("c_form", clear_on_submit=True):
+        c_sel = st.selectbox("Seleccione Cliente", st.session_state.cat_clientes)
+        c_mon = st.number_input("Monto a Cobrar ($)", min_value=0.0)
+        c_fec = st.date_input("Fecha Promesa de Pago")
+        if st.form_submit_button("Registrar Crédito"):
+            st.session_state.db_movimientos.append({
+                "Fecha": c_fec, "Tipo": "Cobro", "Concepto": c_sel, "Monto": c_mon, "Estado": "Pendiente", "Nota": "Crédito"
+            })
+            st.rerun()
+
+# --- TAB REPORTES ---
 with t_rep:
     st.header("📈 Análisis Financiero")
-    rango = st.selectbox("Rango", ["Diario", "Quincenal", "Mensual"])
-    
     if st.session_state.db_movimientos:
         df_rep = pd.DataFrame(st.session_state.db_movimientos)
-        # Resumen gráfico
-        st.plotly_chart(px.bar(df_rep.groupby("Concepto")["Monto"].sum().reset_index(), 
-                               x="Concepto", y="Monto", title="Gasto por Concepto"), use_container_width=True)
+        st.plotly_chart(px.bar(df_rep, x="Tipo", y="Monto", color="Tipo", title="Balance por Categoría"), use_container_width=True)
+        st.write("### Historial de Movimientos")
+        st.dataframe(df_rep, use_container_width=True)
