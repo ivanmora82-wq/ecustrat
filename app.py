@@ -2,156 +2,126 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, date, timedelta
+import io
 
-# 1. CONFIGURACIÓN Y ESTILO DE ALTO CONTRASTE
-st.set_page_config(page_title="ECU-STRAT VISION V25", layout="wide")
+# 1. CONFIGURACIÓN Y ESTILO REFINADO
+st.set_page_config(page_title="ECU-STRAT V26", layout="wide")
 
 st.markdown("""
     <style>
-    /* Estilo Barra Lateral - Letras Blancas y Legibles */
+    /* Solo etiquetas de la barra lateral en blanco, inputs en negro */
+    [data-testid="stSidebar"] label { color: #ffffff !important; font-weight: bold; }
+    [data-testid="stSidebar"] input { color: #000000 !important; }
     [data-testid="stSidebar"] { background-color: #1c2e4a; }
-    [data-testid="stSidebar"] * { color: #ffffff !important; }
-    [data-testid="stSidebar"] h1 { color: #d4af37 !important; font-size: 24px !important; }
     
-    /* Alertas y Diseño */
-    .alerta-vencido { background-color: #ff4b4b; color: white; padding: 12px; border-radius: 8px; font-weight: bold; margin-bottom: 10px; border: 2px solid #ffffff; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border-left: 5px solid #d4af37; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }
+    /* Diseño de tarjetas para filas */
+    .fila-registro { border-bottom: 1px solid #ddd; padding: 10px; display: flex; align-items: center; justify-content: space-between; background: white; margin-bottom: 5px; border-radius: 5px; }
+    .stMetric { border-left: 5px solid #d4af37 !important; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. INICIALIZACIÓN DE DATOS (CATÁLOGOS Y DB)
+# 2. INICIALIZACIÓN
 if 'db' not in st.session_state: st.session_state.db = []
 if 'saldos' not in st.session_state: st.session_state.saldos = {"Banco": 0.0, "Caja Chica": 0.0}
-if 'cat_h' not in st.session_state: st.session_state.cat_h = ["Varios", "Suministros"]
-if 'cat_p' not in st.session_state: st.session_state.cat_p = ["Distribuidor Principal"]
+if 'cat_h' not in st.session_state: st.session_state.cat_h = ["Varios"]
+if 'cat_p' not in st.session_state: st.session_state.cat_p = ["General"]
 if 'cat_c' not in st.session_state: st.session_state.cat_c = ["Cliente General"]
 
 # 3. BARRA LATERAL
 with st.sidebar:
-    st.markdown("<h1>🛡️ EMI MASTER</h1>", unsafe_allow_html=True)
-    nombre_empresa = st.text_input("NOMBRE EMPRESA", "Mi Negocio")
-    sede_act = st.selectbox("📍 SEDE ACTUAL", ["Matriz", "Sucursal 1", "Sucursal 2"])
+    st.markdown("<h1 style='color: #d4af37;'>🛡️ EMI MASTER</h1>", unsafe_allow_html=True)
+    empresa = st.text_input("NOMBRE EMPRESA", "Mi Negocio")
+    sede_act = st.selectbox("📍 SEDE", ["Matriz", "Sucursal 1", "Sucursal 2"])
     
     st.divider()
-    with st.expander("⚙️ CONFIGURAR CATÁLOGOS"):
-        t_cat = st.selectbox("Añadir a:", ["Hormiga", "Proveedor", "Cobro"])
-        n_item = st.text_input("Nombre Nuevo")
-        if st.button("➕ Guardar"):
-            if n_item:
-                if t_cat == "Hormiga": st.session_state.cat_h.append(n_item)
-                elif t_cat == "Proveedor": st.session_state.cat_p.append(n_item)
-                else: st.session_state.cat_c.append(n_item)
-                st.rerun()
-
-    st.divider()
-    st.session_state.saldos["Banco"] = st.number_input("💵 BANCO ($)", value=float(st.session_state.saldos["Banco"]))
-    st.session_state.saldos["Caja Chica"] = st.number_input("🪙 CAJA CHICA ($)", value=float(st.session_state.saldos["Caja Chica"]))
+    st.session_state.saldos["Banco"] = st.number_input("💵 BANCO", value=float(st.session_state.saldos["Banco"]))
+    st.session_state.saldos["Caja Chica"] = st.number_input("🪙 CAJA CHICA", value=float(st.session_state.saldos["Caja Chica"]))
     
-    def calc_balance():
+    def calc_global():
         base = st.session_state.saldos["Banco"] + st.session_state.saldos["Caja Chica"]
         if not st.session_state.db: return base
-        df_tmp = pd.DataFrame(st.session_state.db)
-        ing = df_tmp[df_tmp['Estado'] == 'Ingreso']['Monto'].sum()
-        egr = df_tmp[df_tmp['Estado'] == 'Pagado']['Monto'].sum()
+        df = pd.DataFrame(st.session_state.db)
+        ing = df[df['Estado'] == 'Ingreso']['Monto'].sum()
+        egr = df[df['Estado'] == 'Pagado']['Monto'].sum()
         return base + ing - egr
 
-    st.metric("💰 BALANCE GENERAL GLOBAL", f"$ {round(calc_balance(), 2)}")
+    st.metric("BALANCE GENERAL", f"$ {round(calc_global(), 2)}")
+    
+    # BOTÓN EXPORTAR EXCEL
+    if st.session_state.db:
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            pd.DataFrame(st.session_state.db).to_excel(writer, index=False, sheet_name='Registros')
+        st.download_button(label="📥 Descargar Reporte Excel", data=output.getvalue(), file_name=f"Reporte_{empresa}.xlsx")
 
 # 4. TABS
-t_v, t_f, t_h, t_p, t_c, t_rep = st.tabs(["💰 VENTAS", "🏢 FIJOS", "🐜 HORMIGA", "🚛 PROV", "📞 COBROS", "📈 REPORTES"])
+t_v, t_f, t_h, t_p, t_c, t_rep = st.tabs(["💰 VENTAS", "🏢 FIJOS", "🐜 HORMIGA", "🚛 PROV", "📞 COBROS", "📈 REPORTE"])
 
 # --- TAB VENTAS ---
 with t_v:
     with st.form("fv", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        f_v, m_v = c1.date_input("Fecha Venta", date.today()), c2.number_input("Monto ($)", min_value=0.0)
+        c1, c2 = st.columns(2); fv, mv = c1.date_input("Fecha"), c2.number_input("Monto")
         if st.form_submit_button("Guardar Venta"):
-            st.session_state.db.append({"Fecha": f_v, "Tipo": "Venta", "Concepto": "Ingreso", "Monto": m_v, "Sede": sede_act, "Estado": "Ingreso"})
+            st.session_state.db.append({"Fecha": fv, "Tipo": "Venta", "Concepto": "Ingreso", "Monto": mv, "Sede": sede_act, "Estado": "Ingreso"})
             st.rerun()
     
-    if st.session_state.db:
-        df = pd.DataFrame(st.session_state.db)
-        df_v = df[(df['Tipo'] == 'Venta') & (df['Sede'] == sede_act)]
-        if not df_v.empty:
-            st.write("### Historial de Ventas")
-            st.dataframe(df_v, use_container_width=True)
-            for i, row in df_v.iterrows():
-                if st.button(f"Eliminar Venta {i}", key=f"del_v_{i}"):
-                    st.session_state.db.pop(i); st.rerun()
+    for i, m in enumerate(st.session_state.db):
+        if m['Tipo'] == "Venta" and m['Sede'] == sede_act:
+            col1, col2 = st.columns([5, 1])
+            col1.write(f"📅 {m['Fecha']} | **Monto:** ${m['Monto']}")
+            if col2.button("🗑️", key=f"del_v_{i}"): st.session_state.db.pop(i); st.rerun()
 
-# --- TAB FIJOS (SUMATORIA Y VENCIMIENTO) ---
+# --- TAB FIJOS (CON SUMATORIA DINÁMICA) ---
 with t_f:
-    st.subheader("🏢 Registro de Gastos Fijos")
     with st.form("ff"):
-        f1, f2, f3 = st.columns(3)
-        c_f = f1.text_input("Concepto (Arriendo, Luz...)")
-        m_f = f2.number_input("Monto", min_value=0.0)
-        v_f = f3.date_input("Vencimiento")
+        c1, c2, c3 = st.columns(3)
+        cf, mf, vf = c1.text_input("Gasto"), c2.number_input("Monto"), c3.date_input("Vence")
         if st.form_submit_button("Programar"):
-            st.session_state.db.append({"Fecha": date.today(), "Vencimiento": v_f, "Tipo": "Fijo", "Concepto": c_f, "Monto": m_f, "Sede": sede_act, "Estado": "Pendiente"})
+            st.session_state.db.append({"Fecha": date.today(), "Vencimiento": vf, "Tipo": "Fijo", "Concepto": cf, "Monto": mf, "Sede": sede_act, "Estado": "Pendiente"})
             st.rerun()
-    
-    if st.session_state.db:
-        df_f = pd.DataFrame(st.session_state.db)
-        f_p = df_f[(df_f['Tipo'] == 'Fijo') & (df_f['Estado'] == 'Pendiente')]
-        st.metric("TOTAL FIJOS POR PAGAR", f"$ {f_p['Monto'].sum()}")
-        for i, row in f_p.iterrows():
-            dias = (row['Vencimiento'] - date.today()).days
-            clase = "alerta-vencido" if dias <= 1 else ""
-            st.markdown(f"<div class='{clase}'>🏢 {row['Concepto']} - ${row['Monto']} (Vence en {dias} días)</div>", unsafe_allow_html=True)
-            if st.button(f"PAGAR {row['Concepto']} ##{i}", key=f"pay_f_{i}"):
-                st.session_state.db[i]['Estado'] = 'Pagado'; st.rerun()
 
-# --- TAB HORMIGA (SUMATORIA) ---
-with t_h:
-    with st.form("fh"):
-        h1, h2 = st.columns(2)
-        c_h = h1.selectbox("Concepto", st.session_state.cat_h)
-        m_h = h2.number_input("Monto Hormiga ($)", min_value=0.0)
-        if st.form_submit_button("Registrar"):
-            st.session_state.db.append({"Fecha": date.today(), "Tipo": "Hormiga", "Concepto": c_h, "Monto": m_h, "Sede": sede_act, "Estado": "Pagado"})
-            st.rerun()
-    if st.session_state.db:
-        df_h = pd.DataFrame(st.session_state.db)
-        list_h = df_h[df_h['Tipo'] == 'Hormiga']
-        st.metric("TOTAL GASTO HORMIGA", f"$ {list_h['Monto'].sum()}")
-        st.dataframe(list_h, use_container_width=True)
+    df_f = pd.DataFrame(st.session_state.db) if st.session_state.db else pd.DataFrame()
+    if not df_f.empty and 'Tipo' in df_f.columns:
+        pend = df_f[(df_f['Tipo'] == 'Fijo') & (df_f['Estado'] == 'Pendiente')]
+        st.metric("DEUDA EN FIJOS", f"$ {pend['Monto'].sum()}")
+        for i, row in pend.iterrows():
+            c1, c2, c3 = st.columns([4, 1, 1])
+            c1.warning(f"🏢 {row['Concepto']} - ${row['Monto']} (Vence: {row['Vencimiento']})")
+            if c2.button("PAGAR ✅", key=f"pay_f_{i}"): st.session_state.db[i]['Estado'] = 'Pagado'; st.rerun()
+            if c3.button("🗑️", key=f"del_f_{i}"): st.session_state.db.pop(i); st.rerun()
 
 # --- TAB PROVEEDORES ---
 with t_p:
-    st.subheader("🚛 Deudas a Proveedores")
     with st.form("fp"):
-        p1, p2, p3 = st.columns(3)
-        p_c = p1.selectbox("Proveedor", st.session_state.cat_p)
-        p_m = p2.number_input("Monto Deuda")
-        p_v = p3.date_input("Vencimiento Pago")
+        c1, c2, c3 = st.columns(3)
+        pc, pm, pv = c1.selectbox("Proveedor", st.session_state.cat_p), c2.number_input("Deuda"), c3.date_input("Vence Pago")
         if st.form_submit_button("Guardar"):
-            st.session_state.db.append({"Fecha": date.today(), "Vencimiento": p_v, "Tipo": "Prov", "Concepto": p_c, "Monto": p_m, "Sede": sede_act, "Estado": "Pendiente"})
+            st.session_state.db.append({"Fecha": date.today(), "Vencimiento": pv, "Tipo": "Prov", "Concepto": pc, "Monto": pm, "Sede": sede_act, "Estado": "Pendiente"})
             st.rerun()
     
-    if st.session_state.db:
-        df_p = pd.DataFrame(st.session_state.db)
-        list_p = df_p[(df_p['Tipo'] == 'Prov') & (df_p['Estado'] == 'Pendiente')]
-        st.metric("TOTAL DEUDA PROVEEDORES", f"$ {list_p['Monto'].sum()}")
-        for i, row in list_p.iterrows():
-            dias_p = (row['Vencimiento'] - date.today()).days
-            if dias_p <= 1: st.markdown(f"<div class='alerta-vencido'>⚠️ URGENTE: {row['Concepto']} vence en {dias_p} días</div>", unsafe_allow_html=True)
-            if st.button(f"Marcar como PAGADO: {row['Concepto']} ({i})", key=f"pay_p_{i}"):
-                st.session_state.db[i]['Estado'] = 'Pagado'; st.rerun()
+    df_p = pd.DataFrame(st.session_state.db) if st.session_state.db else pd.DataFrame()
+    if not df_p.empty and 'Tipo' in df_p.columns:
+        pp = df_p[(df_p['Tipo'] == 'Prov') & (df_p['Estado'] == 'Pendiente')]
+        st.metric("SUMA DE DEUDAS", f"$ {pp['Monto'].sum()}")
+        for i, row in pp.iterrows():
+            c1, c2, c3 = st.columns([4, 1, 1])
+            c1.info(f"🚛 {row['Concepto']} | ${row['Monto']} | Vence: {row['Vencimiento']}")
+            if c2.button("PAGAR", key=f"pay_p_{i}"): st.session_state.db[i]['Estado'] = 'Pagado'; st.rerun()
+            if c3.button("🗑️", key=f"del_p_{i}"): st.session_state.db.pop(i); st.rerun()
 
-# --- TAB REPORTES (COMPARATIVA Y RANKINGS) ---
+# --- TAB REPORTES ---
 with t_rep:
-    st.header("📈 Centro de Inteligencia")
     if st.session_state.db:
         df_r = pd.DataFrame(st.session_state.db)
-        col_r1, col_r2 = st.columns(2)
-        tipo_rep = col_r1.selectbox("Reporte", ["Comparativa de Sedes", "Ranking Proveedores", "Ranking Hormiga"])
-        tipo_graf = col_r2.radio("Visualización", ["Barras", "Pastel", "Lineal"], horizontal=True)
-
-        if tipo_rep == "Comparativa de Sedes":
-            res = df_r[df_r['Tipo'] == 'Venta'].groupby("Sede")["Monto"].sum().reset_index()
-            fig = px.bar(res, x="Sede", y="Monto", color="Monto", color_continuous_scale='Viridis')
-            if tipo_graf == "Pastel": fig = px.pie(res, names="Sede", values="Monto")
+        tipo_graf = st.radio("Gráfico:", ["Barras", "Pastel", "Líneas"], horizontal=True)
+        rep = st.selectbox("Análisis:", ["Sedes", "Hormiga", "Proveedores"])
+        
+        if rep == "Sedes": res = df_r[df_r['Tipo']=='Venta'].groupby("Sede")["Monto"].sum().reset_index()
+        elif rep == "Hormiga": res = df_r[df_r['Tipo']=='Hormiga'].groupby("Concepto")["Monto"].sum().reset_index()
+        else: res = df_r[df_r['Tipo']=='Prov'].groupby("Concepto")["Monto"].sum().reset_index()
+        
+        if not res.empty:
+            if tipo_graf == "Barras": fig = px.bar(res, x=res.columns[0], y="Monto", color="Monto")
+            elif tipo_graf == "Pastel": fig = px.pie(res, names=res.columns[0], values="Monto")
+            else: fig = px.line(res, x=res.columns[0], y="Monto")
             st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Ingresa datos para activar los reportes.")
