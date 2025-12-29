@@ -1,6 +1,4 @@
-streamlit
-pandas
-plotly
-xlsxwriter
 gspread
 oauth2client
+pandas
+plotly
