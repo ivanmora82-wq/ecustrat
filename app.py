@@ -4,11 +4,10 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
-# 1. CONEXIÓN PROFESIONAL
+# --- CONFIGURACIÓN DE CONEXIÓN ---
 def conectar():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # Limpieza técnica de la llave
         pk = st.secrets["private_key"].replace('\\n', '\n')
         creds_dict = {
             "type": "service_account",
@@ -34,51 +33,92 @@ def guardar(hoja, fila):
     try:
         doc = conectar()
         doc.worksheet(hoja).append_row(fila)
-        st.success(f"✅ Registrado en {hoja}")
-    except: st.error(f"Error al guardar en {hoja}")
+        st.success(f"✅ Registrado con éxito")
+    except: st.error("❌ Error al conectar con la nube")
 
-# 2. LÓGICA DE BALANCE GENERAL
-def calcular_balance(b_ini, c_ini):
-    ganancias = 0.0
-    gastos = 0.0
-    
-    # Sumamos Ventas (Ingresos)
-    df_v = leer("Ventas")
-    if not df_v.empty: ganancias += pd.to_numeric(df_v['Monto'], errors='coerce').sum()
-    
-    # Restamos Hormiga (Egresos)
-    df_h = leer("Hormiga")
-    if not df_h.empty: gastos += pd.to_numeric(df_h['Monto'], errors='coerce').sum()
-    
-    return b_ini + c_ini + ganancias - gastos
+# --- DISEÑO Y COLORES (CORRECCIÓN DE VISIBILIDAD) ---
+st.set_page_config(page_title="EMI MASTER PRO", layout="wide")
 
-# 3. INTERFAZ
-st.set_page_config(page_title="EMI MASTER CLOUD", layout="wide")
-st.markdown("<style>[data-testid='stSidebar'] { background-color: #1c2e4a !important; } .stMetric { background-color: #d4af37 !important; color: #1c2e4a !important; padding: 15px; border-radius: 15px; font-weight: bold; }</style>", unsafe_allow_html=True)
+st.markdown("""
+    <style>
+    /* Fondo de la barra lateral */
+    [data-testid="stSidebar"] { background-color: #1c2e4a !important; }
+    /* Color de letras en la barra azul (Dorado legible) */
+    [data-testid="stSidebar"] .stMarkdown p, [data-testid="stSidebar"] label { 
+        color: #d4af37 !important; 
+        font-weight: bold; 
+        font-size: 1.1rem;
+    }
+    /* Estilo del Balance General */
+    .stMetric { 
+        background-color: #d4af37 !important; 
+        color: #1c2e4a !important; 
+        padding: 20px; 
+        border-radius: 15px; 
+        text-align: center;
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.3);
+    }
+    /* Arreglo para que los inputs se vean bien */
+    input { color: #1c2e4a !important; }
+    </style>
+    """, unsafe_allow_html=True)
 
+# --- BARRA LATERAL ---
 with st.sidebar:
-    st.markdown("<h1 style='color: #d4af37;'>🛡️ EMI MASTER</h1>", unsafe_allow_html=True)
-    sede_act = st.selectbox("📍 SEDE", ["Matriz", "Sucursal 1", "Sucursal 2"])
+    st.markdown("<h1 style='text-align: center;'>🛡️ EMI MASTER</h1>", unsafe_allow_html=True)
+    sede_act = st.selectbox("📍 SELECCIONAR SEDE", ["Matriz", "Sucursal 1", "Sucursal 2"])
     b_ini = st.number_input("🏦 BANCO INICIAL", value=0.0)
     c_ini = st.number_input("💵 CAJA INICIAL", value=0.0)
     
-    res = calcular_balance(b_ini, c_ini)
-    st.metric("BALANCE GENERAL REAL", f"$ {round(res, 2)}")
+    # Cálculo de Balance en Tiempo Real
+    df_v = leer("Ventas")
+    total_v = pd.to_numeric(df_v['Monto'], errors='coerce').sum() if not df_v.empty else 0.0
+    
+    st.metric("BALANCE GENERAL REAL", f"$ {round(b_ini + c_ini + total_v, 2)}")
 
-tabs = st.tabs(["💰 VENTAS", "🐜 HORMIGA", "📈 REPORTES"])
+# --- PESTAÑAS (TODOS LOS CAMPOS RECUPERADOS) ---
+tabs = st.tabs(["💰 VENTAS", "🏢 FIJOS", "🐜 HORMIGA", "🚛 PROVEEDORES", "📞 COBROS"])
 
 with tabs[0]: # VENTAS
-    with st.form("fv", clear_on_submit=True):
-        mv = st.number_input("Monto de Venta", min_value=0.0)
+    with st.form("f_v", clear_on_submit=True):
+        m = st.number_input("Monto de Venta", min_value=0.0)
         if st.form_submit_button("REGISTRAR VENTA"):
-            guardar("Ventas", [str(date.today()), sede_act, "Venta", mv, "Ingreso"])
+            guardar("Ventas", [str(date.today()), sede_act, "Venta", m, "Ingreso"])
             st.rerun()
     st.dataframe(leer("Ventas"), use_container_width=True)
 
-with tabs[1]: # HORMIGA
-    with st.form("fh", clear_on_submit=True):
-        mh = st.number_input("Monto Gasto", min_value=0.0)
-        if st.form_submit_button("REGISTRAR GASTO"):
-            guardar("Hormiga", [str(date.today()), sede_act, "Gasto", mh, "Egreso"])
+with tabs[1]: # FIJOS
+    with st.form("f_f", clear_on_submit=True):
+        conc = st.text_input("Concepto (Arriendo, Luz, etc)")
+        m = st.number_input("Monto Fijo", min_value=0.0)
+        if st.form_submit_button("REGISTRAR GASTO FIJO"):
+            guardar("Fijos", [str(date.today()), sede_act, conc, m, "Pagado"])
+            st.rerun()
+    st.dataframe(leer("Fijos"), use_container_width=True)
+
+with tabs[2]: # HORMIGA
+    with st.form("f_h", clear_on_submit=True):
+        conc = st.text_input("Gasto Hormiga")
+        m = st.number_input("Monto Hormiga", min_value=0.0)
+        if st.form_submit_button("REGISTRAR HORMIGA"):
+            guardar("Hormiga", [str(date.today()), sede_act, conc, m, "Gasto"])
             st.rerun()
     st.dataframe(leer("Hormiga"), use_container_width=True)
+
+with tabs[3]: # PROVEEDORES
+    with st.form("f_p", clear_on_submit=True):
+        prov = st.text_input("Nombre del Proveedor")
+        m = st.number_input("Monto Factura", min_value=0.0)
+        if st.form_submit_button("REGISTRAR DEUDA"):
+            guardar("Proveedores", [str(date.today()), sede_act, prov, m, "Pendiente"])
+            st.rerun()
+    st.dataframe(leer("Proveedores"), use_container_width=True)
+
+with tabs[4]: # COBROS
+    with st.form("f_c", clear_on_submit=True):
+        cli = st.text_input("Nombre del Cliente")
+        m = st.number_input("Monto por Cobrar", min_value=0.0)
+        if st.form_submit_button("REGISTRAR COBRO"):
+            guardar("Cobros", [str(date.today()), sede_act, cli, m, "Pendiente"])
+            st.rerun()
+    st.dataframe(leer("Cobros"), use_container_width=True)
