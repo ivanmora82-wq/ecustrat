@@ -27,7 +27,10 @@ def conectar():
 def leer(hoja):
     try:
         doc = conectar()
-        return pd.DataFrame(doc.worksheet(hoja).get_all_records())
+        df = pd.DataFrame(doc.worksheet(hoja).get_all_records())
+        if not df.empty:
+            df['Monto'] = pd.to_numeric(df['Monto'], errors='coerce').fillna(0)
+        return df
     except: return pd.DataFrame()
 
 def guardar(hoja, fila):
@@ -37,20 +40,17 @@ def guardar(hoja, fila):
         st.success(f"✅ Registrado en {hoja}")
     except: st.error("❌ Error de red")
 
-# --- 2. DISEÑO Y COLORES (VISIBILIDAD MEJORADA) ---
+# --- 2. DISEÑO Y COLORES MEJORADOS ---
 st.set_page_config(page_title="EMI MASTER PRO", layout="wide")
 
 st.markdown("""
     <style>
-    /* Barra lateral azul oscuro */
     [data-testid="stSidebar"] { background-color: #1c2e4a !important; }
-    /* Letras Doradas Fuertes para que se vean bien */
     [data-testid="stSidebar"] .stMarkdown p, [data-testid="stSidebar"] label { 
         color: #FFD700 !important; 
         font-weight: 800 !important;
-        font-size: 1.2rem !important;
+        font-size: 1.1rem !important;
     }
-    /* Estilo del cuadro de Balance */
     .stMetric { 
         background-color: #d4af37 !important; 
         color: #1c2e4a !important; 
@@ -58,25 +58,31 @@ st.markdown("""
         border-radius: 12px;
         border: 2px solid #FFD700;
     }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] {
+        background-color: #f0f2f6;
+        border-radius: 5px;
+        padding: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. LÓGICA DE BALANCE ---
+# --- 3. BARRA LATERAL Y BALANCE ---
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #FFD700;'>🛡️ EMI MASTER</h1>", unsafe_allow_html=True)
     sede_act = st.selectbox("📍 SEDE", ["Matriz", "Sucursal 1", "Sucursal 2"])
     b_ini = st.number_input("🏦 BANCO INICIAL", value=0.0)
     c_ini = st.number_input("💵 CAJA INICIAL", value=0.0)
     
-    # Cálculo automático
-    df_v = leer("Ventas")
-    total_v = pd.to_numeric(df_v['Monto'], errors='coerce').sum() if not df_v.empty else 0.0
-    df_h = leer("Hormiga")
-    total_h = pd.to_numeric(df_h['Monto'], errors='coerce').sum() if not df_h.empty else 0.0
+    df_v_bal = leer("Ventas")
+    df_h_bal = leer("Hormiga")
+    total_v = df_v_bal['Monto'].sum() if not df_v_bal.empty else 0.0
+    total_h = df_h_bal['Monto'].sum() if not df_h_bal.empty else 0.0
     
-    st.metric("BALANCE REAL", f"$ {round(b_ini + c_ini + total_v - total_h, 2)}")
+    balance_neto = b_ini + c_ini + total_v - total_h
+    st.metric("BALANCE GENERAL REAL", f"$ {round(balance_neto, 2)}")
 
-# --- 4. PESTAÑAS (REPORTES RECUPERADO) ---
+# --- 4. TODAS LAS PESTAÑAS RECUPERADAS ---
 tabs = st.tabs(["💰 VENTAS", "🏢 FIJOS", "🐜 HORMIGA", "🚛 PROVEEDORES", "📞 COBROS", "📊 REPORTES"])
 
 with tabs[0]: # VENTAS
@@ -87,29 +93,61 @@ with tabs[0]: # VENTAS
             st.rerun()
     st.dataframe(leer("Ventas"), use_container_width=True)
 
+with tabs[1]: # FIJOS
+    with st.form("f_f", clear_on_submit=True):
+        conc_f = st.text_input("Concepto (Arriendo, Luz, etc)")
+        m_f = st.number_input("Monto Gasto Fijo", min_value=0.0)
+        if st.form_submit_button("REGISTRAR GASTO FIJO"):
+            guardar("Fijos", [str(date.today()), sede_act, conc_f, m_f, "Egreso"])
+            st.rerun()
+    st.dataframe(leer("Fijos"), use_container_width=True)
+
 with tabs[2]: # HORMIGA
     with st.form("f_h", clear_on_submit=True):
-        conc = st.text_input("Gasto Hormiga")
-        m = st.number_input("Monto Gasto", min_value=0.0)
-        if st.form_submit_button("REGISTRAR GASTO"):
-            guardar("Hormiga", [str(date.today()), sede_act, conc, m, "Egreso"])
+        conc_h = st.text_input("Descripción Gasto Hormiga")
+        m_h = st.number_input("Monto Gasto Hormiga", min_value=0.0)
+        if st.form_submit_button("REGISTRAR GASTO HORMIGA"):
+            guardar("Hormiga", [str(date.today()), sede_act, conc_h, m_h, "Egreso"])
             st.rerun()
     st.dataframe(leer("Hormiga"), use_container_width=True)
 
-with tabs[5]: # --- REPORTE (AQUÍ ESTÁ DE VUELTA) ---
-    st.subheader("📊 Análisis de Negocio Cloud")
-    df_rep = leer("Ventas")
-    if not df_rep.empty:
-        # Gráfica de Ventas por Sede
-        fig = px.pie(df_rep, values='Monto', names='Sede', title="Distribución de Ventas por Sede", hole=.3)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Resumen diario
-        df_rep['Fecha'] = pd.to_datetime(df_rep['Fecha'])
-        ventas_dia = df_rep.groupby('Fecha')['Monto'].sum().reset_index()
-        fig2 = px.line(ventas_dia, x='Fecha', y='Monto', title="Evolución de Ventas Diarias")
-        st.plotly_chart(fig2, use_container_width=True)
-    else:
-        st.warning("Aún no hay datos suficientes para generar reportes.")
+with tabs[3]: # PROVEEDORES
+    with st.form("f_p", clear_on_submit=True):
+        prov = st.text_input("Nombre del Proveedor")
+        m_p = st.number_input("Monto de Factura", min_value=0.0)
+        if st.form_submit_button("REGISTRAR DEUDA"):
+            guardar("Proveedores", [str(date.today()), sede_act, prov, m_p, "Pendiente"])
+            st.rerun()
+    st.dataframe(leer("Proveedores"), use_container_width=True)
 
-# (Aquí se incluyen Fijos, Proveedores y Cobros igual que antes)
+with tabs[4]: # COBROS
+    with st.form("f_c", clear_on_submit=True):
+        cli = st.text_input("Nombre del Cliente")
+        m_c = st.number_input("Monto por Cobrar", min_value=0.0)
+        if st.form_submit_button("REGISTRAR COBRO"):
+            guardar("Cobros", [str(date.today()), sede_act, cli, m_c, "Pendiente"])
+            st.rerun()
+    st.dataframe(leer("Cobros"), use_container_width=True)
+
+with tabs[5]: # REPORTES (CON COMPARATIVA)
+    st.subheader("📊 Análisis Comparativo de Flujos")
+    df_v = leer("Ventas")
+    df_h = leer("Hormiga")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if not df_v.empty and not df_h.empty:
+            resumen = pd.DataFrame({
+                'Categoría': ['Ingresos (Ventas)', 'Egresos (Gastos)'],
+                'Total': [df_v['Monto'].sum(), df_h['Monto'].sum()]
+            })
+            fig_comp = px.bar(resumen, x='Categoría', y='Total', color='Categoría', 
+                             color_discrete_map={'Ingresos (Ventas)': '#2ecc71', 'Egresos (Gastos)': '#e74c3c'},
+                             title="Ventas vs Gastos (Hormiga)")
+            st.plotly_chart(fig_comp, use_container_width=True)
+    
+    with col2:
+        if not df_v.empty:
+            fig_sede = px.pie(df_v, values='Monto', names='Sede', title="Ventas por Sede", hole=.3)
+            st.plotly_chart(fig_sede, use_container_width=True)
