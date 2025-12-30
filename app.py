@@ -5,10 +5,9 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
-# --- 1. CONEXIÓN BLINDADA (LLAVE INTEGRADA PARA EVITAR ERROR BASE64) ---
+# --- 1. CONEXIÓN BLINDADA ---
 def conectar():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    # Iván, he puesto tu llave aquí directamente para que no falle nunca más al leerla
     creds_dict = {
         "type": "service_account",
         "project_id": "fabled-ranger-480412-b9",
@@ -20,8 +19,7 @@ def conectar():
     try:
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         return gspread.authorize(creds).open("EMI_DATA_PRO")
-    except:
-        return None
+    except: return None
 
 def leer(hoja):
     try:
@@ -32,7 +30,7 @@ def leer(hoja):
         return df
     except: return pd.DataFrame()
 
-# --- 2. DISEÑO Y BARRA LATERAL (AZUL/DORADO) ---
+# --- 2. DISEÑO ---
 st.set_page_config(page_title="EMI MASTER PRO", layout="wide")
 st.markdown("""
     <style>
@@ -43,6 +41,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# --- 3. BARRA LATERAL (ÓRDENES HISTÓRICAS) ---
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #FFD700;'>🛡️ EMI MASTER</h1>", unsafe_allow_html=True)
     sede_act = st.selectbox("📍 SEDE", ["Matriz", "Sucursal 1", "Sucursal 2"])
@@ -59,20 +58,18 @@ with st.sidebar:
 
     st.metric("BALANCE NETO REAL", f"$ {round(b_ini + c_ini + v_t + c_p - f_p - p_p - h_t, 2)}")
 
-# --- 3. PESTAÑAS (OPERACIONES Y SUMATORIAS) ---
+# --- 4. PESTAÑAS (MANTIENE PAGAR/COBRAR/SUMATORIAS) ---
 tabs = st.tabs(["💰 VENTAS", "🏢 FIJOS", "🐜 HORMIGA", "🚛 PROV", "📞 COBROS", "📊 REPORTES"])
 
 def render_tab(hoja, alias, label, icn, est_ok):
     df = leer(hoja)
-    st.markdown(f"<div class='sum-box'>TOTAL {hoja.upper()}: $ {df['Monto'].sum() if not df.empty else 0}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='sum-box'>TOTAL ACUMULADO {hoja.upper()}: $ {df['Monto'].sum() if not df.empty else 0}</div>", unsafe_allow_html=True)
     
     with st.expander(f"➕ Registrar {label}"):
         with st.form(f"f_{alias}"):
-            f_r = st.date_input("Fecha", date.today())
-            nom = st.text_input("Detalle")
-            m_r = st.number_input("Monto", min_value=0.0)
+            f_r = st.date_input("Fecha", date.today()); det = st.text_input("Detalle"); m_r = st.number_input("Monto", min_value=0.0)
             if st.form_submit_button("GRABAR"):
-                conectar().worksheet(hoja).append_row([str(f_r), sede_act, nom, m_r, "PENDIENTE"])
+                conectar().worksheet(hoja).append_row([str(f_r), sede_act, det, m_r, "PENDIENTE"])
                 st.rerun()
 
     if not df.empty:
@@ -90,19 +87,27 @@ def render_tab(hoja, alias, label, icn, est_ok):
                 conectar().worksheet(hoja).delete_rows(i + 2); st.rerun()
 
 with tabs[1]: render_tab("Fijos", "f", "💳", "PAGADO")
+with tabs[2]: render_tab("Hormiga", "h", "🐜", "PAGADO") # Hormiga sumatoria incluida
 with tabs[3]: render_tab("Proveedores", "p", "💸", "PAGADO")
-with tabs[4]: render_tab("Cobros", "c", "💰", "COBRADO")
+with tabs[4]: render_tab("Cobros", "c", "💰", "COBRADO") # Cobros sumatoria incluida
 
-# --- 4. REPORTES (SEGÚN ÓRDENES HISTÓRICAS) ---
+# --- 5. REPORTES (SEGÚN ÓRDENES HISTÓRICAS) ---
 with tabs[5]:
-    st.header("📊 Inteligencia EMI")
+    st.header("📊 Centro de Inteligencia")
     c_a, c_b = st.columns(2)
-    inicio = c_a.date_input("Desde", date.today().replace(day=1))
-    fin = c_b.date_input("Hasta", date.today())
+    start = c_a.date_input("Desde", date.today().replace(day=1))
+    end = c_b.date_input("Hasta", date.today())
     
-    df_p_f = leer("Proveedores")
-    if not df_p_f.empty:
-        df_p_f = df_p_f[(df_p_f['Fecha'] >= inicio) & (df_p_f['Fecha'] <= fin)]
-        if not df_p_f.empty:
+    def filtrar(df): return df[(df['Fecha'] >= start) & (df['Fecha'] <= end)] if not df.empty else df
+
+    col1, col2 = st.columns(2)
+    with col1:
+        df_pf = filtrar(leer("Proveedores"))
+        if not df_pf.empty:
             st.subheader("🚛 Máximo Proveedor")
-            st.plotly_chart(px.pie(df_p_f.groupby("Concepto")["Monto"].sum().reset_index(), values="Monto", names="Concepto"), use_container_width=True)
+            st.plotly_chart(px.pie(df_pf.groupby("Concepto")["Monto"].sum().reset_index(), values="Monto", names="Concepto"), use_container_width=True)
+    with col2:
+        df_hf = filtrar(leer("Hormiga"))
+        if not df_hf.empty:
+            st.subheader("🐜 Gasto Hormiga más Fuerte")
+            st.plotly_chart(px.bar(df_hf.groupby("Concepto")["Monto"].sum().reset_index(), x="Concepto", y="Monto"), use_container_width=True)
