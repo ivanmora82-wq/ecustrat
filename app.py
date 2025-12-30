@@ -5,9 +5,10 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
-# --- 1. CONEXIÓN BLINDADA ---
+# --- 1. CONEXIÓN AUTÓNOMA (SIN SECRETS) ---
 def conectar():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    # Llave maestra integrada para evitar errores de detección
     creds_dict = {
         "type": "service_account",
         "project_id": "fabled-ranger-480412-b9",
@@ -30,26 +31,26 @@ def leer(hoja):
         return df
     except: return pd.DataFrame()
 
-# --- 2. DISEÑO ---
+# --- 2. DISEÑO Y BARRA LATERAL ---
 st.set_page_config(page_title="EMI MASTER PRO", layout="wide")
 st.markdown("""
     <style>
     [data-testid="stSidebar"] { background-color: #1c2e4a !important; }
-    [data-testid="stSidebar"] label { color: #FFD700 !important; font-weight: bold; }
-    .stMetric { background-color: #d4af37 !important; color: #1c2e4a !important; padding: 10px; border-radius: 10px; border: 1px solid #FFD700; }
-    .sum-box { background-color: #1c2e4a; color: #FFD700; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #FFD700; margin-bottom: 20px;}
+    [data-testid="stSidebar"] label, .dorado { color: #FFD700 !important; font-weight: bold; }
+    .stMetric { background-color: #d4af37 !important; color: #1c2e4a !important; padding: 10px; border-radius: 10px; border: 2px solid #FFD700; }
+    .sum-box { background-color: #1c2e4a; color: #FFD700; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #FFD700; margin-bottom: 20px; font-size: 1.1rem; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. BARRA LATERAL (ÓRDENES HISTÓRICAS) ---
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #FFD700;'>🛡️ EMI MASTER</h1>", unsafe_allow_html=True)
     sede_act = st.selectbox("📍 SEDE", ["Matriz", "Sucursal 1", "Sucursal 2"])
-    b_ini = st.number_input("🏦 BANCO", value=0.0)
-    c_ini = st.number_input("💵 CAJA", value=0.0)
+    b_ini = st.number_input("🏦 SALDO BANCO", value=0.0)
+    c_ini = st.number_input("💵 SALDO CAJA", value=0.0)
     
     df_v = leer("Ventas"); df_f = leer("Fijos"); df_h = leer("Hormiga"); df_p = leer("Proveedores"); df_c = leer("Cobros")
     
+    # Lógica de Balance (Solo suma lo Cobrado y resta lo Pagado)
     v_t = df_v['Monto'].sum() if not df_v.empty else 0
     f_p = df_f[df_f['Estado'] == 'PAGADO']['Monto'].sum() if not df_f.empty else 0
     p_p = df_p[df_p['Estado'] == 'PAGADO']['Monto'].sum() if not df_p.empty else 0
@@ -58,16 +59,17 @@ with st.sidebar:
 
     st.metric("BALANCE NETO REAL", f"$ {round(b_ini + c_ini + v_t + c_p - f_p - p_p - h_t, 2)}")
 
-# --- 4. PESTAÑAS (MANTIENE PAGAR/COBRAR/SUMATORIAS) ---
-tabs = st.tabs(["💰 VENTAS", "🏢 FIJOS", "🐜 HORMIGA", "🚛 PROV", "📞 COBROS", "📊 REPORTES"])
+# --- 3. PESTAÑAS Y SUMATORIAS ---
+tabs = st.tabs(["💰 VENTAS", "🏢 FIJOS", "🐜 HORMIGA", "🚛 PROVEEDORES", "📞 COBROS", "📊 REPORTES"])
 
-def render_tab(hoja, alias, label, icn, est_ok):
+def render_modulo(hoja, alias, label, icn, est_ok):
     df = leer(hoja)
-    st.markdown(f"<div class='sum-box'>TOTAL ACUMULADO {hoja.upper()}: $ {df['Monto'].sum() if not df.empty else 0}</div>", unsafe_allow_html=True)
+    # SUMATORIA TOTAL VISIBLE (Requerimiento Iván)
+    st.markdown(f"<div class='sum-box'>📊 TOTAL ACUMULADO {hoja.upper()}: $ {df['Monto'].sum() if not df.empty else 0}</div>", unsafe_allow_html=True)
     
     with st.expander(f"➕ Registrar {label}"):
         with st.form(f"f_{alias}"):
-            f_r = st.date_input("Fecha", date.today()); det = st.text_input("Detalle"); m_r = st.number_input("Monto", min_value=0.0)
+            f_r = st.date_input("Fecha", date.today()); det = st.text_input("Detalle/Nombre"); m_r = st.number_input("Monto", min_value=0.0)
             if st.form_submit_button("GRABAR"):
                 conectar().worksheet(hoja).append_row([str(f_r), sede_act, det, m_r, "PENDIENTE"])
                 st.rerun()
@@ -86,14 +88,14 @@ def render_tab(hoja, alias, label, icn, est_ok):
             if c4.button("🗑️", key=f"del_{alias}_{i}"):
                 conectar().worksheet(hoja).delete_rows(i + 2); st.rerun()
 
-with tabs[1]: render_tab("Fijos", "f", "💳", "PAGADO")
-with tabs[2]: render_tab("Hormiga", "h", "🐜", "PAGADO") # Hormiga sumatoria incluida
-with tabs[3]: render_tab("Proveedores", "p", "💸", "PAGADO")
-with tabs[4]: render_tab("Cobros", "c", "💰", "COBRADO") # Cobros sumatoria incluida
+with tabs[1]: render_modulo("Fijos", "f", "💳", "PAGADO")
+with tabs[2]: render_modulo("Hormiga", "h", "🐜", "PAGADO")
+with tabs[3]: render_modulo("Proveedores", "p", "💸", "PAGADO")
+with tabs[4]: render_modulo("Cobros", "c", "💰", "COBRADO")
 
-# --- 5. REPORTES (SEGÚN ÓRDENES HISTÓRICAS) ---
+# --- 4. REPORTES AVANZADOS (SELECTOR DE FECHAS) ---
 with tabs[5]:
-    st.header("📊 Centro de Inteligencia")
+    st.header("📊 Inteligencia de Negocio")
     c_a, c_b = st.columns(2)
     start = c_a.date_input("Desde", date.today().replace(day=1))
     end = c_b.date_input("Hasta", date.today())
@@ -102,12 +104,18 @@ with tabs[5]:
 
     col1, col2 = st.columns(2)
     with col1:
+        st.subheader("🚛 Máximo Proveedor")
         df_pf = filtrar(leer("Proveedores"))
         if not df_pf.empty:
-            st.subheader("🚛 Máximo Proveedor")
             st.plotly_chart(px.pie(df_pf.groupby("Concepto")["Monto"].sum().reset_index(), values="Monto", names="Concepto"), use_container_width=True)
+    
     with col2:
+        st.subheader("🐜 Gasto Hormiga más Fuerte")
         df_hf = filtrar(leer("Hormiga"))
         if not df_hf.empty:
-            st.subheader("🐜 Gasto Hormiga más Fuerte")
             st.plotly_chart(px.bar(df_hf.groupby("Concepto")["Monto"].sum().reset_index(), x="Concepto", y="Monto"), use_container_width=True)
+
+    st.subheader("📞 Mayor Cuenta por Cobrar")
+    df_cf = filtrar(leer("Cobros"))
+    if not df_cf.empty:
+        st.plotly_chart(px.bar(df_cf.groupby("Concepto")["Monto"].sum().reset_index(), x="Concepto", y="Monto", color="Concepto"), use_container_width=True)
