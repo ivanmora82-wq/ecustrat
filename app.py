@@ -5,19 +5,23 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
-# --- 1. CONEXIÓN (CON CURA PARA ERROR BASE64) ---
+# --- 1. CONEXIÓN BLINDADA (LLAVE INTEGRADA PARA EVITAR ERROR BASE64) ---
 def conectar():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    # Iván, he puesto tu llave aquí directamente para que no falle nunca más al leerla
+    creds_dict = {
+        "type": "service_account",
+        "project_id": "fabled-ranger-480412-b9",
+        "private_key_id": "5be77e02ce33b4b12f69dfdda644de61e5ff3d54",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCqgXfcDtZY14MI\nvxK1rB3irY3EAWUCXy1AJgrLZA4fY3Y1AJ2RkGas9FT8contqzOCISENmHKRUUWe\nnCOjZI8E7awOSJ8/6mmuiGp9tkXiPdSSKmwgPGm9vfSCsZ8XTE22VyNNYHLVHcpC\nW7FM076/sRxlRpX4VQx5lafz2BbX+ehAQy/pKhlZgy2ompl9HH3GLt8shoXB6Np2\nkjRtwXngjV16+awj7qBjGpjJYZbDZLBkreV0RHdDG8urcMkYbgw/0rhpw3thHFBF\nvpcCPriyADYZml5RYSyIfE48uETq1d6Nz+wpQLbE8FqQUkTQX4086crVnh184xPG\nCM3Gpva5AgMBAAECggEARjUYTw72+M8IwA25XQAZsDBpeudeGbtqDQt9D2HMJOWW\nE14FA56zgIz8/5QEMk5336HXk9sNdcPCyHwfepSaBVv+KEWD+VQDHyBBxTDMFswB\n3wvDyQRHQB9a8oPD79p191prCV3o+tMQ6QELgQiBdzos6JDHiOEwSVIzvYbhZR1w\nkcanR9TwD1Zzv2IHSk35WG01brKE4D3A0eNROCz+AmTEx9BAeB3QLruNqibNltyS\nYrLK4oJ6P4NBohLgkKJeGr8FIAmKOtA02jBWF0o5NbHzGTvLfJFXTUNDrGrejIWm\nyy7ILvEHqCRB3zwV8bLdi4i38MxmMxQ3jq6x9+gqTwKBgQDS7LuLv59Xbnnc/HO3\nCJvjiMjDqtfF9jpLqb1ViQ7jd0dZ8LeX7qOd791z/7Otn9LydcmhSjlf+HlvDXMo\nKYtFpUmSzjMJNrEIz51jmUNuSZJE3KiZnDC7VrQUkwb5iFyM90jp0g5ibDIyuH6Z\npf7BNbuVS5NNGJqopfjOuI0phwKBgQDO8X5TLO5wT91F2/11tkjVkKl6SucgkgpK\n3FTPdDo9NI3PsyxlCjAlPxkvkT53AR88klf7lF7Dz0yY1bXFcS9CUSfn7h6eZfPi\nX5yMIJnNRqkVZ2XZSkqX2LZIMJiT2BsE5mwv5wtVf2WL0AxZZeYRHDlWTkJlWaPF\n3E1eR8XtvwKBgAosYutdpbjY2kXfY1Frt+EkotJVNi0VMECgAkLS5oXwJd/frWtF\nllyyyhKjPa5dLBaHud7uro/Dc0/47Rn9zvrf+wl6qpmCKs3K/cNlDAyQvd5Wakdm\nci9HAk6PvOFiQ1yFPN4SRKFYqJ8rqOeOSxhUmCSeTY+FZUhHIRYPbreXAoGBAIcQ\nyxhSXRVkqtDrslPfs03gaxzsQknZx2nwwFHeVByabmw/TxxrN903f6KyM4jMbKzF\n/zKuNeOrKx0dbtP8+ZFZEqinm8haVoFLUguLQ5bdJYJYx/q4KFNPGDmprgvgolHi\nan4hWB5nVcmY8lZu0WgdebbAwUkQ5nk/PifoxGBVAoGAYPMLrEuJlpnJM6SJ4pfd\nx/ggxcwRkCo9duUzkAndSS+q4326v6llE7PNLBONzksP4DJntG1saa0xZISSqueX\nKYPHsPn0nlseGFR1yNFXZg32FsIlKeLsCkIgrwtge7Qjccc7F8gOO7faV6strfq+\nKFggcG+4j6j1Xu1LpRniQy4=\n-----END PRIVATE KEY-----\n",
+        "client_email": "emi-database@fabled-ranger-480412-b9.iam.gserviceaccount.com",
+        "client_id": "102764735047338306868"
+    }
     try:
-        pk = st.secrets["private_key"].replace('\\n', '\n').strip()
-        creds_dict = {
-            "type": "service_account", "project_id": st.secrets["project_id"],
-            "private_key_id": st.secrets["private_key_id"], "private_key": pk,
-            "client_email": st.secrets["client_email"], "client_id": st.secrets["client_id"]
-        }
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         return gspread.authorize(creds).open("EMI_DATA_PRO")
-    except: return None
+    except:
+        return None
 
 def leer(hoja):
     try:
@@ -28,13 +32,13 @@ def leer(hoja):
         return df
     except: return pd.DataFrame()
 
-# --- 2. DISEÑO Y BARRA LATERAL ---
+# --- 2. DISEÑO Y BARRA LATERAL (AZUL/DORADO) ---
 st.set_page_config(page_title="EMI MASTER PRO", layout="wide")
 st.markdown("""
     <style>
     [data-testid="stSidebar"] { background-color: #1c2e4a !important; }
     [data-testid="stSidebar"] label { color: #FFD700 !important; font-weight: bold; }
-    .stMetric { background-color: #d4af37 !important; color: #1c2e4a !important; padding: 10px; border-radius: 10px; border: 2px solid #FFD700; }
+    .stMetric { background-color: #d4af37 !important; color: #1c2e4a !important; padding: 10px; border-radius: 10px; border: 1px solid #FFD700; }
     .sum-box { background-color: #1c2e4a; color: #FFD700; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #FFD700; margin-bottom: 20px;}
     </style>
     """, unsafe_allow_html=True)
@@ -53,9 +57,9 @@ with st.sidebar:
     h_t = df_h['Monto'].sum() if not df_h.empty else 0
     c_p = df_c[df_c['Estado'] == 'COBRADO']['Monto'].sum() if not df_c.empty else 0
 
-    st.metric("BALANCE NETO", f"$ {round(b_ini + c_ini + v_t + c_p - f_p - p_p - h_t, 2)}")
+    st.metric("BALANCE NETO REAL", f"$ {round(b_ini + c_ini + v_t + c_p - f_p - p_p - h_t, 2)}")
 
-# --- 3. PESTAÑAS OPERATIVAS ---
+# --- 3. PESTAÑAS (OPERACIONES Y SUMATORIAS) ---
 tabs = st.tabs(["💰 VENTAS", "🏢 FIJOS", "🐜 HORMIGA", "🚛 PROV", "📞 COBROS", "📊 REPORTES"])
 
 def render_tab(hoja, alias, label, icn, est_ok):
@@ -64,9 +68,11 @@ def render_tab(hoja, alias, label, icn, est_ok):
     
     with st.expander(f"➕ Registrar {label}"):
         with st.form(f"f_{alias}"):
-            f_reg = st.date_input("Fecha", date.today()); det = st.text_input("Detalle"); m_reg = st.number_input("Monto", min_value=0.0)
+            f_r = st.date_input("Fecha", date.today())
+            nom = st.text_input("Detalle")
+            m_r = st.number_input("Monto", min_value=0.0)
             if st.form_submit_button("GRABAR"):
-                conectar().worksheet(hoja).append_row([str(f_reg), sede_act, det, m_reg, "PENDIENTE"])
+                conectar().worksheet(hoja).append_row([str(f_r), sede_act, nom, m_r, "PENDIENTE"])
                 st.rerun()
 
     if not df.empty:
