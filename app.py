@@ -5,9 +5,8 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
-# --- 1. CONEXIÓN Y CACHÉ (VELOCIDAD TURBO) ---
-@st.cache_resource(show_spinner=False)
-def conectar_gs():
+# --- 1. CONEXIÓN BLINDADA (LLAVE INTEGRADA) ---
+def conectar():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = {
         "type": "service_account",
@@ -17,107 +16,119 @@ def conectar_gs():
         "client_email": "emi-database@fabled-ranger-480412-b9.iam.gserviceaccount.com",
         "client_id": "102764735047338306868"
     }
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    return gspread.authorize(creds).open("EMI_DATA_PRO")
-
-def leer_datos(hoja):
     try:
-        ws = conectar_gs().worksheet(hoja)
-        df = pd.DataFrame(ws.get_all_records())
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        return gspread.authorize(creds).open("EMI_DATA_PRO")
+    except: return None
+
+def leer(hoja):
+    try:
+        df = pd.DataFrame(conectar().worksheet(hoja).get_all_records())
         if not df.empty:
             df['Monto'] = pd.to_numeric(df['Monto'], errors='coerce').fillna(0)
             df['Fecha'] = pd.to_datetime(df['Fecha']).dt.date
         return df
     except: return pd.DataFrame()
 
-# --- 2. DISEÑO ---
+# --- 2. LÓGICA DE TIEMPO Y ARRASTRE ---
+hoy = date.today()
+primer_dia_mes = hoy.replace(day=1)
+
+def calcular_arrastre(fecha):
+    df_v = leer("Ventas"); df_f = leer("Fijos"); df_p = leer("Proveedores"); df_c = leer("Cobros"); df_h = leer("Hormiga")
+    v = df_v[df_v['Fecha'] < fecha]['Monto'].sum() if not df_v.empty else 0
+    c = df_c[(df_c['Fecha'] < fecha) & (df_c['Estado'] == 'COBRADO')]['Monto'].sum() if not df_c.empty else 0
+    f = df_f[(df_f['Fecha'] < fecha) & (df_f['Estado'] == 'PAGADO')]['Monto'].sum() if not df_f.empty else 0
+    p = df_p[(df_p['Fecha'] < fecha) & (df_p['Estado'] == 'PAGADO')]['Monto'].sum() if not df_p.empty else 0
+    h = df_h[(df_h['Fecha'] < fecha) & (df_h['Estado'] == 'PAGADO')]['Monto'].sum() if not df_h.empty else 0
+    return v + c - f - p - h
+
+# --- 3. DISEÑO ---
 st.set_page_config(page_title="EMI MASTER PRO", layout="wide")
 st.markdown("""
     <style>
     [data-testid="stSidebar"] { background-color: #1c2e4a !important; }
     [data-testid="stSidebar"] label { color: #FFD700 !important; font-weight: bold; }
     .stMetric { background-color: #d4af37 !important; color: #1c2e4a !important; padding: 10px; border-radius: 10px; border: 1px solid #FFD700; }
-    .sum-box { background-color: #1c2e4a; color: #FFD700; padding: 5px; border-radius: 5px; text-align: center; margin-bottom: 10px; font-weight: bold; }
-    .icon-btn { font-size: 1.2rem; cursor: pointer; }
+    .sum-box { background-color: #1c2e4a; color: #FFD700; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #FFD700; margin-bottom: 20px; font-weight: bold;}
+    .registro-fila { border-bottom: 1px solid #ddd; padding: 10px 0px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. LOGICA TEMPORAL ---
-hoy = date.today()
-primer_dia = hoy.replace(day=1)
-
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #FFD700;'>🛡️ EMI MASTER</h1>", unsafe_allow_html=True)
-    sede_act = st.selectbox("📍 SEDE", ["Matriz", "Sucursal 1", "Sucursal 2"])
+    sede_act = st.selectbox("📍 SEDE ACTUAL", ["Matriz", "Sucursal 1", "Sucursal 2"])
     b_ini = st.number_input("🏦 BANCO", value=0.0)
     c_ini = st.number_input("💵 CAJA", value=0.0)
     
-    # Lectura optimizada
-    df_v = leer_datos("Ventas"); df_f = leer_datos("Fijos"); df_h = leer_datos("Hormiga"); df_p = leer_datos("Proveedores"); df_c = leer_datos("Cobros")
+    saldo_pasado = calcular_arrastre(primer_dia_mes)
+    st.info(f"💾 **Saldo al {primer_dia_mes}:**\n$ {saldo_pasado}")
     
-    # Balance Real (Optimizado)
-    v_t = df_v['Monto'].sum() if not df_v.empty else 0
-    f_p = df_f[df_f['Estado'] == 'PAGADO']['Monto'].sum() if not df_f.empty else 0
-    p_p = df_p[df_p['Estado'] == 'PAGADO']['Monto'].sum() if not df_p.empty else 0
-    h_p = df_h[df_h['Estado'] == 'PAGADO']['Monto'].sum() if not df_h.empty else 0
-    c_p = df_c[df_c['Estado'] == 'COBRADO']['Monto'].sum() if not df_c.empty else 0
+    df_v = leer("Ventas"); df_f = leer("Fijos"); df_h = leer("Hormiga"); df_p = leer("Proveedores"); df_c = leer("Cobros")
+    
+    # Balance Real del mes actual + Arrastre
+    v_mes = df_v[df_v['Fecha'] >= primer_dia_mes]['Monto'].sum() if not df_v.empty else 0
+    f_mes = df_f[(df_f['Fecha'] >= primer_dia_mes) & (df_f['Estado'] == 'PAGADO')]['Monto'].sum() if not df_f.empty else 0
+    p_mes = df_p[(df_p['Fecha'] >= primer_dia_mes) & (df_p['Estado'] == 'PAGADO')]['Monto'].sum() if not df_p.empty else 0
+    h_mes = df_h[(df_h['Fecha'] >= primer_dia_mes) & (df_h['Estado'] == 'PAGADO')]['Monto'].sum() if not df_h.empty else 0
+    c_mes = df_c[(df_c['Fecha'] >= primer_dia_mes) & (df_c['Estado'] == 'COBRADO')]['Monto'].sum() if not df_c.empty else 0
 
-    st.metric("BALANCE NETO ACTUAL", f"$ {round(b_ini + c_ini + v_t + c_p - f_p - p_p - h_p, 2)}")
+    balance_total = b_ini + c_ini + saldo_pasado + v_mes + c_mes - f_mes - p_mes - h_mes
+    st.metric("BALANCE NETO ACTUAL", f"$ {round(balance_total, 2)}")
 
-# --- 4. RENDERIZADO CON ICONOS COMPACTOS ---
+# --- 4. PESTAÑAS OPERATIVAS ---
 tabs = st.tabs(["💰 VENTAS", "🏢 FIJOS", "🐜 HORMIGA", "🚛 PROVEEDORES", "📞 COBROS", "📊 REPORTES"])
 
-def render_fila_iconos(hoja, alias, label, icn_ok, txt_ok):
-    df = leer_datos(hoja)
-    # Filtro de Arrastre (Mes actual o Pendientes)
-    df_v = df[(df['Fecha'] >= primer_dia) | (df['Estado'] == 'PENDIENTE')] if not df.empty else pd.DataFrame()
+def render_modulo_fila_unica(hoja, alias, label, icn_ok, txt_ok):
+    df_full = leer(hoja)
+    # Filtro: Mes actual o deudas pendientes históricas
+    df_ver = df_full[(df_full['Fecha'] >= primer_dia_mes) | (df_full['Estado'] == 'PENDIENTE')] if not df_full.empty else pd.DataFrame()
     
-    st.markdown(f"<div class='sum-box'>📊 TOTAL {hoja.upper()}: $ {df_v['Monto'].sum() if not df_v.empty else 0}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='sum-box'>📈 TOTAL {hoja.upper()}: $ {df_ver['Monto'].sum() if not df_ver.empty else 0}</div>", unsafe_allow_html=True)
     
-    # Formulario con Sugerencias
-    memoria = df['Concepto'].unique().tolist() if not df.empty else []
+    # Sugerencias para evitar errores de tipeo
+    nombres_list = df_full['Concepto'].unique().tolist() if not df_full.empty else []
+    
     with st.expander(f"➕ Registrar {label}"):
         with st.form(f"f_{alias}", clear_on_submit=True):
-            col_f, col_n = st.columns(2)
-            f = col_f.date_input("Fecha", hoy)
-            n = col_n.selectbox(f"{label}", ["Nuevo..."] + memoria)
-            if n == "Nuevo...": n = st.text_input(f"Nombre del {label}")
-            m = st.number_input("Monto", min_value=0.0)
+            f_r = st.date_input("Fecha", hoy)
+            nom = st.selectbox(f"Sugerencia {label}", ["Nuevo..."] + nombres_list)
+            if nom == "Nuevo...": nom = st.text_input(f"Escriba {label}")
+            m_r = st.number_input("Monto", min_value=0.0)
             if st.form_submit_button("GRABAR"):
-                conectar_gs().worksheet(hoja).append_row([str(f), sede_act, n, m, "PENDIENTE"])
-                st.cache_data.clear(); st.rerun()
+                conectar().worksheet(hoja).append_row([str(f_r), sede_act, nom, m_r, "PENDIENTE"])
+                st.rerun()
 
-    if not df_v.empty:
-        for i, row in df_v.iterrows():
-            c1, c2, c3, c4, c5 = st.columns([4, 2, 1, 1, 1])
-            c1.write(f"{row['Fecha']} | {row['Concepto']}")
-            c2.write(f"**${row['Monto']}**")
+    if not df_ver.empty:
+        for i, row in df_ver.iterrows():
+            st.markdown("<div class='registro-fila'>", unsafe_allow_html=True)
+            c1, c2, c3, c4, c5 = st.columns([3, 2, 1, 1, 1])
+            c1.write(f"{row['Fecha']} | **{row['Concepto']}**")
+            c2.write(f"${row['Monto']} ({row['Estado'][0]})")
             
-            # Botón Acción (Icono)
+            # ACCIÓN: PAGAR/COBRAR
             if row['Estado'] == "PENDIENTE":
                 if c3.button(icn_ok, key=f"ok_{alias}_{i}", help=f"Marcar {txt_ok}"):
-                    conectar_gs().worksheet(hoja).update_cell(i + 2, 5, txt_ok)
-                    st.cache_data.clear(); st.rerun()
+                    conectar().worksheet(hoja).update_cell(i + 2, 5, txt_ok); st.rerun()
             else:
                 if c3.button("🔄", key=f"rev_{alias}_{i}", help="Revertir"):
-                    conectar_gs().worksheet(hoja).update_cell(i + 2, 5, "PENDIENTE")
-                    st.cache_data.clear(); st.rerun()
+                    conectar().worksheet(hoja).update_cell(i + 2, 5, "PENDIENTE"); st.rerun()
             
-            c4.button("📝", key=f"ed_{alias}_{i}", help="Editar registro")
-            if c5.button("🗑️", key=f"del_{alias}_{i}", help="Eliminar permanentemente"):
-                conectar_gs().worksheet(hoja).delete_rows(i + 2)
-                st.cache_data.clear(); st.rerun()
+            # EDITAR Y ELIMINAR
+            c4.button("📝", key=f"ed_{alias}_{i}")
+            if c5.button("🗑️", key=f"del_{alias}_{i}"):
+                conectar().worksheet(hoja).delete_rows(i + 2); st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
 
-# --- VENTAS CON EDICIÓN Y ELIMINACIÓN ---
-with tabs[0]:
-    df_v_mes = df_v[df_v['Fecha'] >= primer_dia] if not df_v.empty else pd.DataFrame()
+with tabs[0]: # VENTAS CON EDICIÓN Y ELIMINACIÓN
+    df_v_mes = df_v[df_v['Fecha'] >= primer_dia_mes] if not df_v.empty else pd.DataFrame()
     st.markdown(f"<div class='sum-box'>💰 TOTAL VENTAS MES: $ {df_v_mes['Monto'].sum() if not df_v_mes.empty else 0}</div>", unsafe_allow_html=True)
     with st.form("fv"):
-        f_v = st.date_input("Fecha", hoy); m_v = st.number_input("Monto", min_value=0.0)
+        f_v = st.date_input("Fecha Venta", hoy)
+        m_v = st.number_input("Monto Venta", min_value=0.0)
         if st.form_submit_button("GRABAR VENTA"):
-            conectar_gs().worksheet("Ventas").append_row([str(f_v), sede_act, "Venta Diaria", m_v, "PAGADO"])
-            st.cache_data.clear(); st.rerun()
-    
+            conectar().worksheet("Ventas").append_row([str(f_v), sede_act, "Venta Diaria", m_v, "PAGADO"])
+            st.rerun()
     if not df_v_mes.empty:
         for i, row in df_v_mes.iterrows():
             c1, c2, c3, c4 = st.columns([5, 2, 1, 1])
@@ -125,15 +136,25 @@ with tabs[0]:
             c2.write(f"**${row['Monto']}**")
             c3.button("📝", key=f"ed_v_{i}")
             if c4.button("🗑️", key=f"del_v_{i}"):
-                conectar_gs().worksheet("Ventas").delete_rows(i + 2)
-                st.cache_data.clear(); st.rerun()
+                conectar().worksheet("Ventas").delete_rows(i + 2); st.rerun()
 
-with tabs[1]: render_fila_iconos("Fijos", "f", "Gasto Fijo", "💸", "PAGADO")
-with tabs[2]: render_fila_iconos("Hormiga", "h", "Gasto Hormiga", "💸", "PAGADO")
-with tabs[3]: render_fila_iconos("Proveedores", "p", "Proveedor", "💸", "PAGADO")
-with tabs[4]: render_fila_iconos("Cobros", "c", "Cuenta Cobro", "💰", "COBRADO")
+with tabs[1]: render_modulo_fila_unica("Fijos", "f", "Gasto Fijo", "💸", "PAGADO")
+with tabs[2]: render_modulo_fila_unica("Hormiga", "h", "Gasto Hormiga", "💸", "PAGADO")
+with tabs[3]: render_modulo_fila_unica("Proveedores", "p", "Proveedor", "💸", "PAGADO")
+with tabs[4]: render_modulo_fila_unica("Cobros", "c", "Cuenta Cobro", "💰", "COBRADO")
 
 with tabs[5]:
-    st.header("📊 Inteligencia de Negocio")
-    rep = st.selectbox("Elegir Análisis:", ["Seleccionar...", "Máximo Proveedor", "Gasto Hormiga Fuerte", "Comparativa: Matriz vs Sucursales", "Diferencia Ventas vs Gastos"])
-    # Filtros de fecha y lógica de reportes se mantienen igual...
+    st.header("📊 Reportes y Análisis")
+    col_f1, col_f2 = st.columns(2)
+    start_d = col_f1.date_input("Desde", primer_dia_mes)
+    end_d = col_f2.date_input("Hasta", hoy)
+    
+    rep = st.selectbox("Elija el reporte:", ["Seleccionar...", "Máximo Proveedor", "Gasto Hormiga Fuerte", "Ventas: Matriz vs Sucursales", "Diferencia Ventas vs Gastos"])
+    
+    def f_df(df): return df[(df['Fecha'] >= start_d) & (df['Fecha'] <= end_d)] if not df.empty else df
+
+    if rep == "Máximo Proveedor":
+        st.plotly_chart(px.pie(f_df(df_p).groupby("Concepto")["Monto"].sum().reset_index(), values="Monto", names="Concepto", hole=.4))
+    elif rep == "Diferencia Ventas vs Gastos":
+        v = f_df(df_v)['Monto'].sum(); g = f_df(df_f)['Monto'].sum() + f_df(df_p)['Monto'].sum() + f_df(df_h)['Monto'].sum()
+        st.plotly_chart(px.bar(pd.DataFrame({"Eje": ["Ventas", "Gastos"], "Monto": [v, g]}), x="Eje", y="Monto", color="Eje"))
