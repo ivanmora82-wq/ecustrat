@@ -5,10 +5,11 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
-# --- 1. CONEXIÓN A LA NUBE ---
+# --- 1. CONEXIÓN REFORZADA A LA NUBE ---
 def conectar():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
+        # Limpieza técnica de la llave para evitar errores de base64
         pk = st.secrets["private_key"].replace('\\n', '\n')
         creds_dict = {
             "type": "service_account",
@@ -40,40 +41,47 @@ def guardar(hoja, fila):
         st.success(f"✅ Registrado en {hoja}")
     except: st.error("❌ Error de red")
 
-# --- 2. DISEÑO Y COLORES MEJORADOS ---
+# --- 2. DISEÑO Y VISIBILIDAD (DORADO FUERTE SOBRE AZUL) ---
 st.set_page_config(page_title="EMI MASTER PRO", layout="wide")
 
 st.markdown("""
     <style>
+    /* Barra lateral azul oscuro */
     [data-testid="stSidebar"] { background-color: #1c2e4a !important; }
+    /* Letras Doradas Brillantes para máxima visibilidad */
     [data-testid="stSidebar"] .stMarkdown p, [data-testid="stSidebar"] label { 
         color: #FFD700 !important; 
         font-weight: 800 !important;
         font-size: 1.1rem !important;
     }
+    /* Estilo del Balance General */
     .stMetric { 
         background-color: #d4af37 !important; 
         color: #1c2e4a !important; 
         padding: 15px; 
         border-radius: 12px;
         border: 2px solid #FFD700;
+        font-weight: bold;
     }
+    /* Estilo de las pestañas */
     .stTabs [data-baseweb="tab-list"] { gap: 10px; }
     .stTabs [data-baseweb="tab"] {
         background-color: #f0f2f6;
         border-radius: 5px;
         padding: 10px;
+        color: #1c2e4a;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. BARRA LATERAL Y BALANCE ---
+# --- 3. BARRA LATERAL Y BALANCE GENERAL ---
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #FFD700;'>🛡️ EMI MASTER</h1>", unsafe_allow_html=True)
-    sede_act = st.selectbox("📍 SEDE", ["Matriz", "Sucursal 1", "Sucursal 2"])
-    b_ini = st.number_input("🏦 BANCO INICIAL", value=0.0)
-    c_ini = st.number_input("💵 CAJA INICIAL", value=0.0)
+    sede_act = st.selectbox("📍 SELECCIONAR SEDE", ["Matriz", "Sucursal 1", "Sucursal 2"])
+    b_ini = st.number_input("🏦 SALDO BANCO INICIAL", value=0.0)
+    c_ini = st.number_input("💵 SALDO CAJA INICIAL", value=0.0)
     
+    # Cálculo automático desde la nube
     df_v_bal = leer("Ventas")
     df_h_bal = leer("Hormiga")
     total_v = df_v_bal['Monto'].sum() if not df_v_bal.empty else 0.0
@@ -129,13 +137,12 @@ with tabs[4]: # COBROS
             st.rerun()
     st.dataframe(leer("Cobros"), use_container_width=True)
 
-with tabs[5]: # REPORTES (CON COMPARATIVA)
-    st.subheader("📊 Análisis Comparativo de Flujos")
+with tabs[5]: # REPORTES (COMPARATIVA Y GRÁFICAS)
+    st.subheader("📊 Análisis de Flujos y Sedes")
     df_v = leer("Ventas")
     df_h = leer("Hormiga")
     
     col1, col2 = st.columns(2)
-    
     with col1:
         if not df_v.empty and not df_h.empty:
             resumen = pd.DataFrame({
@@ -146,7 +153,6 @@ with tabs[5]: # REPORTES (CON COMPARATIVA)
                              color_discrete_map={'Ingresos (Ventas)': '#2ecc71', 'Egresos (Gastos)': '#e74c3c'},
                              title="Ventas vs Gastos (Hormiga)")
             st.plotly_chart(fig_comp, use_container_width=True)
-    
     with col2:
         if not df_v.empty:
             fig_sede = px.pie(df_v, values='Monto', names='Sede', title="Ventas por Sede", hole=.3)
