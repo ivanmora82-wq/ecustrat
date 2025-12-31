@@ -4,38 +4,43 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
-# --- 1. CONEXIÓN REFORZADA (ANTI-ERROR BINASCII) ---
-def conectar():
+# --- 1. CONEXIÓN BLINDADA (SOLUCIÓN PANTALLA ROJA) ---
+def conectar_seguro():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    # Formato de llave corregido para evitar errores de padding
-    pk = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCqgXfcDtZY14MI\nvxK1rB3irY3EAWUCXy1AJgrLZA4fY3Y1AJ2RkGas9FT8contqzOCISENmHKRUUWe\nnCOjZI8E7awOSJ8/6mmuiGp9tkXiPdSSKmwgPGm9vfSCsZ8XTE22VyNNYHLVHcpC\nW7FM076/sRxlRpX4VQx5lafz2BbX+ehAQy/pKhlZgy2ompl9HH3GLt8shoXB6Np2\nkjRtwXngjV16+awj7qBjGpjJYZbDZLBkreV0RHdDG8urcMkYbgw/0rhpw3thHFBF\nvpcCPriyADYZml5RYSyIfE48uETq1d6Nz+wpQLbE8FqQUkTQX4086crVnh184xPG\nCM3Gpva5AgMBAAECggEARjUYTw72+M8IwA25XQAZsDBpeudeGbtqDQt9D2HMJOWW\nE14FA56zgIz8/5QEMk5336HXk9sNdcPCyHwfepSaBVv+KEWD+VQDHyBBxTDMFswB\n3wvDyQRHQB9a8oPD79p191prCV3o+tMQ6QELgQiBdzos6JDHiOEwSVIzvYbhZR1w\nkcanR9TwD1Zzv2IHSk35WG01brKE4D3A0eNROCz+AmTEx9BAeB3QLruNqibNltyS\nYrLK4oJ6P4NBohLgkKJeGr8FIAmKOtA02jBWF0o5NbHzGTvLfJFXTUNDrGrejIWm\nyy7ILvEHqCRB3zwV8bLdi4i38MxmMxQ3jq6x9+gqTwKBgQDS7LuLv59Xbnnc/HO3\nCJvjiMjDqtfF9jpLqb1ViQ7jd0dZ8LeX7qOd791z/7Otn9LydcmhSjlf+HlvDXMo\nKYtFpUmSzjMJNrEIz51jmUNuSZJE3KiZnDC7VrQUkwb5iFyM90jp0g5ibDIyuH6Z\ npf7BNbuVS5NNGJqopfjOuI0phwKBgQDO8X5TLO5wT91F2/11tkjVkKl6SucgkgpK\n3FTPdDo9NI3PsyxlCjAlPxkvkT53AR88klf7lF7Dz0yY1bXFcS9CUSfn7h6eZfPi\nX5yMIJnNRqkVZ2XZSkqX2LZIMJiT2BsE5mwv5wtVf2WL0AxZZeYRHDlWTkJlWaPF\n3E1eR8XtvwKBgAosYutdpbjY2kXfY1Frt+EkotJVNi0VMECgAkLS5oXwJd/frWtF\nllyyyhKjPa5dLBaHud7uro/Dc0/47Rn9zvrf+wl6qpmCKs3K/cNlDAyQvd5Wakdm\ci9HAk6PvOFiQ1yFPN4SRKFYqJ8rqOeOSxhUmCSeTY+FZUhHIRYPbreXAoGBAIcQ\nyxhSXRVkqtDrslPfs03gaxzsQknZx2nwwFHeVByabmw/TxxrN903f6KyM4jMbKzF\n/zKuNeOrKx0dbtP8+ZFZEqinm8haVoFLUguLQ5bdJYJYx/q4KFNPGDmprgvgolHi\nan4hWB5nVcmY8lZu0WgdebbAwUkQ5nk/PifoxGBVAoGAYPMLrEuJlpnJM6SJ4pfd\ nx/ggxcwRkCo9duUzkAndSS+q4326v6llE7PNLBONzksP4DJntG1saa0xZISSqueX\nKYPHsPn0nlseGFR1yNFXZg32FsIlKeLsCkIgrwtge7Qjccc7F8gOO7faV6strfq+\nKFggcG+4j6j1Xu1LpRniQy4=\n-----END PRIVATE KEY-----\n"
+    # Clave privada directa con limpieza de saltos de línea
+    pk_raw = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCqgXfcDtZY14MI\nvxK1rB3irY3EAWUCXy1AJgrLZA4fY3Y1AJ2RkGas9FT8contqzOCISENmHKRUUWe\nnCOjZI8E7awOSJ8/6mmuiGp9tkXiPdSSKmwgPGm9vfSCsZ8XTE22VyNNYHLVHcpC\nW7FM076/sRxlRpX4VQx5lafz2BbX+ehAQy/pKhlZgy2ompl9HH3GLt8shoXB6Np2\nkjRtwXngjV16+awj7qBjGpjJYZbDZLBkreV0RHdDG8urcMkYbgw/0rhpw3thHFBF\nvpcCPriyADYZml5RYSyIfE48uETq1d6Nz+wpQLbE8FqQUkTQX4086crVnh184xPG\nCM3Gpva5AgMBAAECggEARjUYTw72+M8IwA25XQAZsDBpeudeGbtqDQt9D2HMJOWW\nE14FA56zgIz8/5QEMk5336HXk9sNdcPCyHwfepSaBVv+KEWD+VQDHyBBxTDMFswB\n3wvDyQRHQB9a8oPD79p191prCV3o+tMQ6QELgQiBdzos6JDHiOEwSVIzvYbhZR1w\nkcanR9TwD1Zzv2IHSk35WG01brKE4D3A0eNROCz+AmTEx9BAeB3QLruNqibNltyS\nYrLK4oJ6P4NBohLgkKJeGr8FIAmKOtA02jBWF0o5NbHzGTvLfJFXTUNDrGrejIWm\nyy7ILvEHqCRB3zwV8bLdi4i38MxmMxQ3jq6x9+gqTwKBgQDS7LuLv59Xbnnc/HO3\nCJvjiMjDqtfF9jpLqb1ViQ7jd0dZ8LeX7qOd791z/7Otn9LydcmhSjlf+HlvDXMo\nKYtFpUmSzjMJNrEIz51jmUNuSZJE3KiZnDC7VrQUkwb5iFyM90jp0g5ibDIyuH6Z\npf7BNbuVS5NNGJqopfjOuI0phwKBgQDO8X5TLO5wT91F2/11tkjVkKl6SucgkgpK\n3FTPdDo9NI3PsyxlCjAlPxkvkT53AR88klf7lF7Dz0yY1bXFcS9CUSfn7h6eZfPi\nX5yMIJnNRqkVZ2XZSkqX2LZIMJiT2BsE5mwv5wtVf2WL0AxZZeYRHDlWTkJlWaPF\n3E1eR8XtvwKBgAosYutdpbjY2kXfY1Frt+EkotJVNi0VMECgAkLS5oXwJd/frWtF\nllyyyhKjPa5dLBaHud7uro/Dc0/47Rn9zvrf+wl6qpmCKs3K/cNlDAyQvd5Wakdm\ci9HAk6PvOFiQ1yFPN4SRKFYqJ8rqOeOSxhUmCSeTY+FZUhHIRYPbreXAoGBAIcQ\nyxhSXRVkqtDrslPfs03gaxzsQknZx2nwwFHeVByabmw/TxxrN903f6KyM4jMbKzF\n/zKuNeOrKx0dbtP8+ZFZEqinm8haVoFLUguLQ5bdJYJYx/q4KFNPGDmprgvgolHi\nan4hWB5nVcmY8lZu0WgdebbAwUkQ5nk/PifoxGBVAoGAYPMLrEuJlpnJM6SJ4pfd\nx/ggxcwRkCo9duUzkAndSS+q4326v6llE7PNLBONzksP4DJntG1saa0xZISSqueX\nKYPHsPn0nlseGFR1yNFXZg32FsIlKeLsCkIgrwtge7Qjccc7F8gOO7faV6strfq+\nKFggcG+4j6j1Xu1LpRniQy4=\n-----END PRIVATE KEY-----\n"
+    
+    # TRIPLE LIMPIEZA: Asegura que Streamlit lea la llave correctamente
+    pk = pk_raw.replace('\\n', '\n').strip()
+    
     creds_dict = {
         "type": "service_account",
         "project_id": "fabled-ranger-480412-b9",
         "private_key_id": "5be77e02ce33b4b12f69dfdda644de61e5ff3d54",
-        "private_key": pk.replace('\\n', '\n'),
+        "private_key": pk,
         "client_email": "emi-database@fabled-ranger-480412-b9.iam.gserviceaccount.com",
         "client_id": "102764735047338306868"
     }
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     return gspread.authorize(creds).open("EMI_DATA_PRO")
 
-def leer(hoja):
+def leer_hoja(nombre):
     try:
-        ws = conectar().worksheet(hoja)
+        ws = conectar_seguro().worksheet(nombre)
         df = pd.DataFrame(ws.get_all_records())
         if not df.empty:
             df['Monto'] = pd.to_numeric(df['Monto'], errors='coerce').fillna(0)
             df['Fecha'] = pd.to_datetime(df['Fecha']).dt.date
             if 'Estado' not in df.columns: df['Estado'] = 'PENDIENTE'
-            df['idx'] = df.index + 2
+            df['idx_real'] = df.index + 2
         return df
-    except: return pd.DataFrame(columns=['Fecha', 'Sede', 'Concepto', 'Monto', 'Estado', 'idx'])
+    except Exception as e:
+        return pd.DataFrame(columns=['Fecha', 'Sede', 'Concepto', 'Monto', 'Estado', 'idx_real'])
 
-# --- 2. CONFIGURACIÓN VISUAL ---
-st.set_page_config(page_title="EMI MASTER V160", layout="wide")
+# --- 2. CONFIGURACIÓN ---
+st.set_page_config(page_title="EMI MASTER V170", layout="wide")
 hoy = date.today()
-primer_dia = hoy.replace(day=1)
+primer_dia_mes = hoy.replace(day=1)
 
 st.markdown("""
     <style>
@@ -46,75 +51,72 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. BARRA LATERAL (SUMATORIAS) ---
+# --- 3. SIDEBAR (BALANCE TOTAL) ---
 with st.sidebar:
     st.markdown("<h1 style='text-align: center; color: #FFD700;'>🛡️ EMI MASTER</h1>", unsafe_allow_html=True)
     sede_act = st.selectbox("📍 PUNTO DE VENTA", ["Matriz", "Sucursal 1", "Sucursal 2"])
-    b_ini = st.number_input("🏦 SALDO BANCO", value=0.0)
-    c_ini = st.number_input("💵 SALDO CAJA", value=0.0)
+    b_ini = st.number_input("🏦 BANCO", value=0.0)
+    c_ini = st.number_input("💵 CAJA", value=0.0)
     
-    df_v = leer("Ventas"); df_f = leer("Fijos"); df_p = leer("Proveedores"); df_c = leer("Cobros"); df_h = leer("Hormiga")
+    # Carga de datos
+    df_v = leer_hoja("Ventas"); df_f = leer_hoja("Fijos"); df_p = leer_hoja("Proveedores"); df_c = leer_hoja("Cobros")
     
-    def calcular_arrastre():
-        v = df_v[df_v['Fecha'] < primer_dia]['Monto'].sum() if not df_v.empty else 0
-        c = df_c[(df_c['Fecha'] < primer_dia) & (df_c['Estado'] == 'COBRADO')]['Monto'].sum() if not df_c.empty else 0
-        f = df_f[(df_f['Estado'] == 'PAGADO') & (df_f['Fecha'] < primer_dia)]['Monto'].sum() if not df_f.empty else 0
-        p = df_p[(df_p['Estado'] == 'PAGADO') & (df_p['Fecha'] < primer_dia)]['Monto'].sum() if not df_p.empty else 0
-        h = df_h[df_h['Fecha'] < primer_dia]['Monto'].sum() if not df_h.empty else 0
-        return v + c - f - p - h
-
-    arrastre = calcular_arrastre()
-    st.info(f"💾 **Saldo al {primer_dia}:**\n$ {arrastre}")
+    # Cálculo de Arrastre
+    v_h = df_v[df_v['Fecha'] < primer_dia_mes]['Monto'].sum() if not df_v.empty else 0
+    c_h = df_c[(df_c['Fecha'] < primer_dia_mes) & (df_c['Estado'] == 'COBRADO')]['Monto'].sum() if not df_c.empty else 0
+    g_h = (df_f[df_f['Estado'] == 'PAGADO'].Monto.sum() if not df_f.empty else 0)
     
-    v_mes = df_v[df_v['Fecha'] >= primer_dia]['Monto'].sum() if not df_v.empty else 0
-    st.metric("BALANCE NETO REAL", f"$ {round(b_ini + c_ini + arrastre + v_mes, 2)}")
+    saldo_arrastre = v_h + c_h - g_h
+    st.info(f"💾 **Saldo al {primer_dia_mes}:**\n$ {saldo_arrastre}")
+    
+    v_mes = df_v[df_v['Fecha'] >= primer_dia_mes]['Monto'].sum() if not df_v.empty else 0
+    st.metric("BALANCE NETO REAL", f"$ {round(b_ini + c_ini + saldo_arrastre + v_mes, 2)}")
 
 # --- 4. RENDERIZADO POR PESTAÑAS ---
-tabs = st.tabs(["💰 VENTAS", "🏢 GASTOS", "🚛 PROVEEDORES", "📞 COBROS", "📊 REPORTES"])
+tabs = st.tabs(["💰 VENTAS", "🏢 GASTOS", "🚛 PROVEEDORES", "📞 COBROS"])
 
-def render_modulo_compacto(hoja, alias, label, txt_ok):
-    df_raw = leer(hoja)
-    df = df_raw[(df_raw['Fecha'] >= primer_dia) | (df_raw['Estado'] == 'PENDIENTE')] if not df_raw.empty else pd.DataFrame()
+def render_modulo_seguro(hoja, alias, label, txt_ok):
+    df_raw = leer_hoja(hoja)
+    df = df_raw[(df_raw['Fecha'] >= primer_dia_mes) | (df_raw['Estado'] == 'PENDIENTE')] if not df_raw.empty else pd.DataFrame()
+    
     st.markdown(f"<div class='sum-box'>TOTAL {hoja.upper()}: $ {df['Monto'].sum() if not df.empty else 0}</div>", unsafe_allow_html=True)
     
     with st.expander(f"➕ Registrar {label}"):
-        with st.form(f"f_{alias}", clear_on_submit=True):
+        with st.form(f"form_{alias}", clear_on_submit=True):
             f_r = st.date_input("Fecha", hoy); det = st.text_input("Detalle"); m_r = st.number_input("Monto", min_value=0.0)
             if st.form_submit_button("GRABAR"):
-                conectar().worksheet(hoja).append_row([str(f_r), sede_act, det, m_r, "PENDIENTE"])
-                st.rerun()
+                try:
+                    conectar_seguro().worksheet(hoja).append_row([str(f_r), sede_act, det, m_r, "PENDIENTE"])
+                    st.success("Grabado correctamente"); st.rerun()
+                except: st.error("Error de conexión. Reintente.")
 
     if not df.empty:
         for _, row in df.iterrows():
             c1, c2, c3 = st.columns([5, 2, 2])
             c1.write(f"📅 {row['Fecha']} | {row['Concepto']}")
             c2.write(f"**${row['Monto']}**")
-            
-            # Selector de acción único para evitar lentitud
-            accion = c3.selectbox("Acción", ["...", f"Confirmar {txt_ok}", "Revertir", "Borrar"], key=f"act_{alias}_{row['idx']}")
-            
-            if accion == f"Confirmar {txt_ok}":
-                conectar().worksheet(hoja).update_cell(row['idx'], 5, txt_ok); st.rerun()
-            elif accion == "Revertir":
-                conectar().worksheet(hoja).update_cell(row['idx'], 5, "PENDIENTE"); st.rerun()
-            elif accion == "Borrar":
-                conectar().worksheet(hoja).delete_rows(row['idx']); st.rerun()
+            # Selector de acción
+            op = c3.selectbox("Acción", ["...", f"Confirmar {txt_ok}", "Borrar"], key=f"ac_{alias}_{row['idx_real']}")
+            if op == f"Confirmar {txt_ok}":
+                conectar_seguro().worksheet(hoja).update_cell(row['idx_real'], 5, txt_ok); st.rerun()
+            elif op == "Borrar":
+                conectar_seguro().worksheet(hoja).delete_rows(row['idx_real']); st.rerun()
 
 with tabs[0]: # VENTAS
-    df_v_mes = df_v[df_v['Fecha'] >= primer_dia]
-    st.markdown(f"<div class='sum-box'>💰 TOTAL VENTAS MES: $ {df_v_mes['Monto'].sum() if not df_v_mes.empty else 0}</div>", unsafe_allow_html=True)
+    df_v_mes = df_v[df_v['Fecha'] >= primer_dia_mes] if not df_v.empty else pd.DataFrame()
+    st.markdown(f"<div class='sum-box'>TOTAL VENTAS MES: $ {df_v_mes['Monto'].sum() if not df_v_mes.empty else 0}</div>", unsafe_allow_html=True)
     with st.form("fv"):
-        f_v = st.date_input("Fecha Venta", hoy); m_v = st.number_input("Monto Venta $", min_value=0.0)
+        f_v = st.date_input("Fecha", hoy); m_v = st.number_input("Valor $", min_value=0.0)
         if st.form_submit_button("GUARDAR VENTA"):
-            conectar().worksheet("Ventas").append_row([str(f_v), sede_act, "Venta Diaria", m_v, "PAGADO"])
+            conectar_seguro().worksheet("Ventas").append_row([str(f_v), sede_act, "Venta Diaria", m_v, "PAGADO"])
             st.rerun()
     if not df_v_mes.empty:
         for _, row in df_v_mes.iterrows():
             c1, c2, c3 = st.columns([6, 2, 2])
             c1.write(f"📅 {row['Fecha']} | Venta"); c2.write(f"**${row['Monto']}**")
-            if c3.button("🗑️ Borrar", key=f"v_del_{row['idx']}"):
-                conectar().worksheet("Ventas").delete_rows(row['idx']); st.rerun()
+            if c3.button("🗑️ Borrar", key=f"v_del_{row['idx_real']}"):
+                conectar_seguro().worksheet("Ventas").delete_rows(row['idx_real']); st.rerun()
 
-with tabs[1]: render_modulo_compacto("Fijos", "f", "Gasto Fijo", "PAGADO")
-with tabs[2]: render_modulo_compacto("Proveedores", "p", "Proveedor", "PAGADO")
-with tabs[3]: render_modulo_compacto("Cobros", "c", "Cuenta Cobro", "COBRADO")
+with tabs[1]: render_modulo_seguro("Fijos", "f", "Gasto", "PAGADO")
+with tabs[2]: render_modulo_seguro("Proveedores", "p", "Proveedor", "PAGADO")
+with tabs[3]: render_modulo_seguro("Cobros", "c", "Cobro", "COBRADO")
