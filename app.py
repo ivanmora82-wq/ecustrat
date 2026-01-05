@@ -3,109 +3,123 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import datetime
 import pandas as pd
-import altair as alt
 import base64
 import json
+import urllib.parse
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="EMI MASTER - PRO", layout="wide")
+st.set_page_config(page_title="EMI MASTER PRO", layout="wide", initial_sidebar_state="collapsed")
 
-# Estilos visuales solicitados
+# --- DISEÑO VISUAL CORPORATIVO (Dorado y Negro) ---
 st.markdown("""
     <style>
-    [data-testid="stSidebar"] { background-color: #0e1117; color: white; }
-    .balance-box { background-color: #d4af37; padding: 20px; border-radius: 10px; color: #1a2a44; font-weight: bold; text-align: center; font-size: 24px; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; }
+    .stApp { background-color: #111111; color: #FFFFFF; }
+    
+    /* Contenedor del Logo */
+    .logo-container {
+        display: flex;
+        justify-content: center;
+        padding: 10px;
+        background-color: #1a1a1a;
+        border-bottom: 2px solid #d4af37;
+    }
+    
+    /* Botones Grandes para Celular */
+    .stButton>button {
+        width: 100%;
+        height: 80px;
+        font-size: 22px !important;
+        font-weight: bold !important;
+        border-radius: 15px;
+        background: linear-gradient(135deg, #d4af37 0%, #aa8a2e 100%);
+        color: #000000;
+        border: none;
+        margin-top: 10px;
+    }
+    
+    /* Tarjetas de Métricas */
+    .metric-card {
+        background: #1e1e1e;
+        padding: 15px;
+        border-radius: 12px;
+        border: 1px solid #333;
+        text-align: center;
+        margin-bottom: 10px;
+    }
+
+    /* Estilo de las Pestañas (Tabs) */
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        background-color: #222;
+        border-radius: 10px 10px 0px 0px;
+        color: white;
+    }
+    .stTabs [aria-selected="true"] { background-color: #d4af37 !important; color: black !important; }
     </style>
     """, unsafe_allow_html=True)
 
 def conectar_db():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # Recuperar la cadena Base64 de los secretos
+        # Usamos el secreto en Base64 para evitar errores de padding
         encoded_creds = st.secrets["gcp_service_account"]["encoded_creds"]
-        # Decodificar
         decoded_creds = base64.b64decode(encoded_creds).decode("utf-8")
         creds_dict = json.loads(decoded_creds)
-        
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
-        # Nombre exacto de tu archivo detectado
         return client.open("EMI_DATA_PRO")
     except Exception as e:
         st.error(f"Error de conexión: {e}")
         return None
 
-# --- SIDEBAR ---
-with st.sidebar:
-    st.markdown("<h2 style='color: #FFD700;'>🛡️ EMI MASTER</h2>", unsafe_allow_html=True)
-    st.write("📍 **PUNTO DE VENTA**")
-    sede_act = st.selectbox("Seleccionar Sede", ["Matriz", "Sucursal 1"], label_visibility="collapsed")
+# --- HEADER CON LOGO ---
+# Reemplaza 'URL_DE_TU_LOGO' por el enlace real
+URL_LOGO = "https://raw.githubusercontent.com/tu-usuario/tu-repo/main/logo.png" # Ejemplo
+st.markdown(f"""
+    <div class="logo-container">
+        <img src="{URL_LOGO}" width="80" style="margin-right:15px;">
+        <h1 style="color: #d4af37; margin: 0; align-self: center;">EMI MASTER PRO</h1>
+    </div>
+    """, unsafe_allow_html=True)
+
+# --- INDICADORES RÁPIDOS ---
+col_v, col_g = st.columns(2)
+with col_v:
+    st.markdown('<div class="metric-card"><small>INGRESOS HOY</small><h2 style="color:#2ecc71; margin:0;">$ 0.00</h2></div>', unsafe_allow_html=True)
+with col_g:
+    st.markdown('<div class="metric-card"><small>GASTOS HOY</small><h2 style="color:#e74c3c; margin:0;">$ 0.00</h2></div>', unsafe_allow_html=True)
+
+# --- NAVEGACIÓN PRINCIPAL ---
+tab_v, tab_g, tab_c = st.tabs(["💰 VENTA", "📉 GASTO", "📲 CIERRE"])
+
+with tab_v:
+    st.markdown("### 🛒 Registro de Venta")
+    giro = st.pills("Giro del Negocio", ["General", "Lubricadora", "Restaurante"], selection_mode="single", default="General")
     
-    st.write("🏦 **BANCO**")
-    banco = st.number_input("Banco", value=1000.0, step=10.0, label_visibility="collapsed")
+    monto_v = st.number_input("Monto Cobrado ($)", min_value=0.0, step=0.50, format="%.2f")
+    pago_v = st.selectbox("Método de Pago", ["💵 Efectivo", "📱 Transferencia", "💳 Tarjeta"])
     
-    st.write("💵 **CAJA**")
-    caja = st.number_input("Caja", value=30.0, step=5.0, label_visibility="collapsed")
-    
-    st.write("BALANCE NETO TOTAL")
-    st.markdown(f"<div class='balance-box'>$ {banco + caja}</div>", unsafe_allow_html=True)
+    # Detalle dinámico
+    detalle_v = ""
+    if giro == "Lubricadora":
+        detalle_v = st.text_input("🚗 Placa / Kilometraje", placeholder="Ej: PBY-2345")
+    elif giro == "Restaurante":
+        detalle_v = st.selectbox("🪑 Mesa", ["Mesa 1", "Mesa 2", "Mesa 3", "Para llevar"])
+    else:
+        detalle_v = st.text_input("📝 Nota rápida", placeholder="Ej: Venta de lubricantes")
 
-# --- CUERPO PRINCIPAL ---
-st.title("Sistema de Gestión EMI_DATA_PRO")
-
-tab1, tab2, tab3 = st.tabs(["📝 REGISTRO", "📊 REPORTES", "📈 GRÁFICOS"])
-
-with tab1:
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.subheader("📈 Ingresos")
-        with st.form("form_ingresos"):
-            f_i = st.date_input("Fecha", datetime.date.today())
-            m_i = st.number_input("Monto $", min_value=0.0, step=1.0)
-            det_i = st.selectbox("Método", ["Efectivo", "Transferencia", "Tarjeta"])
-            if st.form_submit_button("Guardar Ingreso"):
-                db = conectar_db()
-                if db:
-                    db.worksheet("Movimientos").append_row([str(f_i), "INGRESO", "Venta", m_i, sede_act, det_i])
-                    st.success("Ingreso guardado")
-
-    with col_b:
-        st.subheader("📉 Egresos")
-        with st.form("form_egresos"):
-            f_e = st.date_input("Fecha Gasto", datetime.date.today())
-            m_e = st.number_input("Monto Gasto $", min_value=0.0, step=1.0)
-            cat_e = st.selectbox("Categoría", ["Proveedores", "Servicios", "Sueldos", "Otros"])
-            det_e = st.text_input("Detalle")
-            if st.form_submit_button("Guardar Egreso"):
-                db = conectar_db()
-                if db:
-                    db.worksheet("Movimientos").append_row([str(f_e), "EGRESO", cat_e, m_e, sede_act, det_e])
-                    st.warning("Egreso guardado")
-
-with tab2:
-    if st.button("Actualizar Historial"):
+    if st.button("🚀 GUARDAR VENTA"):
         db = conectar_db()
         if db:
-            data = db.worksheet("Movimientos").get_all_records()
-            df = pd.DataFrame(data)
-            if not df.empty:
-                st.dataframe(df.sort_index(ascending=False), use_container_width=True)
+            try:
+                fecha = datetime.date.today().strftime("%Y-%m-%d")
+                db.worksheet("Movimientos").append_row([fecha, "INGRESO", giro, monto_v, "Sucursal 1", detalle_v, pago_v])
+                st.success("✅ ¡Venta guardada!")
+                st.balloons()
+            except Exception as e: st.error(f"Error: {e}")
 
-with tab3:
-    if st.button("Generar Gráfico de Flujo"):
-        db = conectar_db()
-        if db:
-            data = db.worksheet("Movimientos").get_all_records()
-            df = pd.DataFrame(data)
-            if not df.empty:
-                df['Monto'] = pd.to_numeric(df['Monto'])
-                df_grafico = df.groupby(['Fecha', 'Tipo'])['Monto'].sum().reset_index()
-                
-                chart = alt.Chart(df_grafico).mark_bar().encode(
-                    x='Fecha:T',
-                    y='Monto:Q',
-                    color=alt.Color('Tipo:N', scale=alt.Scale(domain=['INGRESO', 'EGRESO'], range=['#2ecc71', '#e74c3c'])),
-                    tooltip=['Fecha', 'Tipo', 'Monto']
-                ).interactive()
-                st.altair_chart(chart, use_container_width=True)
+with tab_g:
+    st.markdown("### 💸 Registrar Gasto")
+    monto_g = st.number_input("Monto Gastado ($)", min_value=0.0, step=0.50)
+    cat_g = st.
