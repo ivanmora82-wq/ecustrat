@@ -1,62 +1,28 @@
 import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import datetime
 import pandas as pd
-import base64
-import json
-import urllib.parse
+import datetime
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="EMI MASTER PRO", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="EMI MASTER PRO", layout="wide")
 
-# --- DISEÑO VISUAL CORPORATIVO (Dorado y Negro) ---
+# --- ESTILOS UX/UI (Dorado y Negro) ---
 st.markdown("""
     <style>
-    .stApp { background-color: #111111; color: #FFFFFF; }
-    .logo-container {
-        display: flex;
-        justify-content: center;
-        padding: 20px;
-        background-color: #1a1a1a;
-        border-bottom: 2px solid #d4af37;
-    }
-    .stButton>button {
-        width: 100%;
-        height: 80px;
-        font-size: 22px !important;
-        font-weight: bold !important;
-        border-radius: 15px;
-        background: linear-gradient(135deg, #d4af37 0%, #aa8a2e 100%);
-        color: #000000;
-        border: none;
-        margin-top: 10px;
-    }
-    .metric-card {
-        background: #1e1e1e;
-        padding: 15px;
-        border-radius: 12px;
-        border: 1px solid #333;
-        text-align: center;
-        margin-bottom: 10px;
-    }
-    .stTabs [aria-selected="true"] { background-color: #d4af37 !important; color: black !important; }
+    .stApp { background-color: #0E1117; color: white; }
+    .main-header { text-align: center; padding: 20px; background: #1A1A1A; border-bottom: 3px solid #D4AF37; border-radius: 15px; }
+    .stButton>button { width: 100%; height: 50px; border-radius: 10px; background: #D4AF37; color: black; font-weight: bold; }
+    .card { background: #1E1E1E; padding: 15px; border-radius: 10px; border: 1px solid #333; margin-bottom: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
+# --- CONEXIÓN DIRECTA (Sin Base64 para evitar errores ASCII) ---
 def conectar_db():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # Obtenemos el secreto
-        encoded_creds = st.secrets["gcp_service_account"]["encoded_creds"]
-        
-        # LIMPIEZA ASCII (Elimina el error 'string argument should contain only ASCII characters')
-        encoded_creds = "".join(encoded_creds.split()).strip()
-        
-        # Decodificación segura
-        decoded_creds = base64.b64decode(encoded_creds).decode("utf-8")
-        creds_dict = json.loads(decoded_creds)
-        
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         return client.open("EMI_DATA_PRO")
@@ -64,86 +30,83 @@ def conectar_db():
         st.error(f"Error de conexión: {e}")
         return None
 
-# --- HEADER CON LOGO ---
+# --- INICIO DE APLICACIÓN ---
 URL_LOGO = "https://raw.githubusercontent.com/ivanmora82-wq/ecustrat/main/logo.png"
+
 st.markdown(f"""
-    <div class="logo-container">
-        <img src="{URL_LOGO}" width="80" style="margin-right:15px; border-radius: 10px;">
-        <h1 style="color: #d4af37; margin: 0; align-self: center;">EMI MASTER PRO</h1>
+    <div class="main-header">
+        <img src="{URL_LOGO}" width="80">
+        <h1 style="color: #D4AF37; margin: 0;">EMI MASTER PRO</h1>
+        <p style="color: #888;">Sistema de Gestión de Alta Precisión</p>
     </div>
     """, unsafe_allow_html=True)
 
-# --- NAVEGACIÓN PRINCIPAL ---
-tab_v, tab_g, tab_c = st.tabs(["💰 VENTA", "📉 GASTO", "📲 CIERRE"])
-
-with tab_v:
-    st.markdown("### 🛒 Registro de Venta")
-    giro = st.radio("Negocio:", ["General", "Lubricadora", "Restaurante"], horizontal=True)
+# --- SIDEBAR: CONTROL DE TIEMPO Y LOCAL ---
+with st.sidebar:
+    st.header("⚙️ Configuración")
+    local_nombre = st.text_input("Nombre del Local", value="EMI Master")
+    tipo_local = st.selectbox("Tipo", ["Matriz", "Sucursal 1", "Sucursal 2"])
     
-    monto_v = st.number_input("Monto Cobrado ($)", min_value=0.0, step=0.50, format="%.2f")
-    pago_v = st.selectbox("Método de Pago", ["💵 Efectivo", "📱 Transferencia", "💳 Tarjeta"])
+    st.write("---")
+    fecha_trabajo = st.date_input("📅 Fecha de Consulta", datetime.date.today())
     
-    detalle_v = ""
-    if giro == "Lubricadora":
-        detalle_v = st.text_input("🚗 Placa / Vehículo", placeholder="Ej: ABC-1234")
-    elif giro == "Restaurante":
-        detalle_v = st.selectbox("🪑 Ubicación", ["Mesa 1", "Mesa 2", "Mesa 3", "Para llevar"])
-    else:
-        detalle_v = st.text_input("📝 Nota rápida")
+    st.write("---")
+    st.header("💰 Saldos Iniciales")
+    caja_chica = st.number_input("Caja Chica ($)", value=0.0, format="%.2f")
+    bancos = st.number_input("Saldo en Bancos ($)", value=0.0, format="%.2f")
 
-    if st.button("🚀 GUARDAR VENTA"):
-        db = conectar_db()
-        if db:
-            try:
-                fecha = datetime.date.today().strftime("%Y-%m-%d")
-                # Estructura basada en tu archivo: Fecha, Tipo, Categoria, Monto, Sede, Detalle, Metodo_Pago 
-                fila = [fecha, "INGRESO", giro, monto_v, "Sucursal 1", detalle_v, pago_v]
-                db.worksheet("Movimientos").append_row(fila)
-                st.success("✅ ¡Venta guardada!")
-                st.balloons()
-            except Exception as e: st.error(f"Error al escribir: {e}")
+# --- CUERPO PRINCIPAL ---
+tab1, tab2, tab3 = st.tabs(["💰 VENTAS DEL DÍA", "📉 GASTOS Y PAGOS", "📊 REPORTES"])
 
-with tab_g:
-    st.markdown("### 💸 Registrar Gasto")
-    monto_g = st.number_input("Valor pagado ($)", min_value=0.0, step=0.50)
-    cat_g = st.selectbox("Categoría", ["Mercadería", "Sueldos", "Servicios", "Arriendo", "Otros"])
-    det_g = st.text_input("Detalle del gasto")
+with tab1:
+    st.subheader(f"Registro de Ventas - {fecha_trabajo}")
     
-    if st.button("🚨 REGISTRAR GASTO"):
-        db = conectar_db()
-        if db:
-            try:
-                fecha = datetime.date.today().strftime("%Y-%m-%d")
-                fila = [fecha, "EGRESO", cat_g, monto_g, "Sucursal 1", det_g, "Efectivo"]
-                db.worksheet("Movimientos").append_row(fila)
-                st.warning("📉 Gasto registrado.")
-            except Exception as e: st.error(f"Error: {e}")
+    # KPIs Rápidos
+    col_k1, col_k2 = st.columns(2)
+    with col_k1:
+        st.markdown(f'<div class="card">💵 Total en Caja<br><h2>$ {caja_chica}</h2></div>', unsafe_allow_html=True)
+    with col_k2:
+        st.markdown(f'<div class="card">🏦 Total en Bancos<br><h2>$ {bancos}</h2></div>', unsafe_allow_html=True)
 
-with tab_c:
-    st.markdown("### 🏁 Cierre de Caja")
-    if st.button("📊 GENERAR REPORTE"):
-        db = conectar_db()
-        if db:
-            try:
-                data = db.worksheet("Movimientos").get_all_records()
-                df = pd.DataFrame(data)
-                hoy = datetime.date.today().strftime("%Y-%m-%d")
-                df_h = df[df['Fecha'] == hoy]
-                
-                # Sumatoria de flujo
-                ing = pd.to_numeric(df_h[df_h['Tipo'] == 'INGRESO']['Monto']).sum()
-                egr = pd.to_numeric(df_h[df_h['Tipo'] == 'EGRESO']['Monto']).sum()
-                total = ing - egr
-                
-                st.markdown(f"""
-                <div style="background:#222; padding:20px; border-radius:15px; border: 2px solid #d4af37; text-align:center;">
-                    <h2 style="color:#d4af37; margin:0;">BALANCE HOY: ${total:,.2f}</h2>
-                    <p>Ventas: ${ing} | Gastos: ${egr}</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # WhatsApp
-                txt = f"*EMI MASTER CIERRE*\n📅 {hoy}\n💰 Ventas: ${ing}\n📉 Gastos: ${egr}\n💵 *NETO: ${total}*"
-                link = f"https://wa.me/?text={urllib.parse.quote(txt)}"
-                st.markdown(f'<a href="{link}" target="_blank"><button style="background-color:#25D366; color:white; width:100%; border-radius:10px; height:60px; border:none; cursor:pointer; font-weight:bold; margin-top:15px;">📲 ENVIAR POR WHATSAPP</button></a>', unsafe_allow_html=True)
-            except Exception as e: st.info("No hay datos hoy.")
+    # Formulario de Ventas
+    with st.form("form_ventas"):
+        col1, col2, col3 = st.columns([2,2,1])
+        monto_v = col1.number_input("Monto de Venta ($)", min_value=0.0, format="%.2f")
+        metodo_v = col2.selectbox("Destino", ["Efectivo (Caja)", "Banco (Transferencia/Tarjeta)"])
+        detalle_v = col3.text_input("Nota")
+        
+        btn_v = st.form_submit_button("REGISTRAR VENTA")
+        
+        if btn_v:
+            db = conectar_db()
+            if db:
+                try:
+                    sheet = db.worksheet("Movimientos")
+                    # Columnas: Fecha, Tipo, Local, Categoria, Monto, Detalle, Metodo
+                    fila = [str(fecha_trabajo), "INGRESO", local_nombre, tipo_local, monto_v, detalle_v, metodo_v]
+                    sheet.append_row(fila)
+                    st.success(f"Venta de ${monto_v} guardada correctamente.")
+                except Exception as e:
+                    st.error(f"Error al guardar: {e}")
+
+    # Tabla de Historial del día con opción de búsqueda
+    st.write("---")
+    st.subheader("🔍 Historial de la Fecha")
+    db = conectar_db()
+    if db:
+        data = db.worksheet("Movimientos").get_all_records()
+        df = pd.DataFrame(data)
+        if not df.empty:
+            # Filtrar por fecha seleccionada
+            df_fecha = df[df['Fecha'] == str(fecha_trabajo)]
+            st.dataframe(df_fecha, use_container_width=True)
+            
+            # Botones de Edición (Simulados por ahora)
+            st.info("💡 Para editar o eliminar, selecciona la fila en tu Google Sheets 'EMI_DATA_PRO'. Pronto integraremos edición directa aquí.")
+
+# --- PRÓXIMAS FASES ---
+with tab2:
+    st.info("Módulo de Gastos Hormiga y Fijos: En desarrollo según tu diseño de 'Memoria de Escritura'.")
+
+with tab3:
+    st.info("Módulo de Reportes Comparativos: En desarrollo.")
