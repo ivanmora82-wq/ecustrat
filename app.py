@@ -7,7 +7,7 @@ import datetime
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="EMI MASTER PRO", layout="wide")
 
-# --- ESTILOS VISUALES (Negro, Dorado y Blanco) ---
+# --- ESTILOS VISUALES CORPORATIVOS ---
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: white; }
@@ -21,9 +21,7 @@ st.markdown("""
 def conectar_db():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # Cargamos el diccionario directamente de los secretos
         creds_dict = dict(st.secrets["gcp_service_account"])
-        # Limpieza IA de saltos de línea
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         return gspread.authorize(creds).open("EMI_DATA_PRO")
@@ -31,11 +29,11 @@ def conectar_db():
         st.error(f"⚠️ Error de Conexión: {e}")
         return None
 
-# --- ENCABEZADO CON IDENTIDAD ---
+# --- ENCABEZADO ---
 st.markdown(f"""
     <div class="main-header">
         <h1 style="color: #D4AF37; margin: 0;">EMI MASTER PRO</h1>
-        <p style="color: #888;">Gestión Inteligente de Negocios</p>
+        <p style="color: #888;">Gestión con Auto-Aprendizaje de Proveedores</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -44,58 +42,88 @@ with st.sidebar:
     st.header("⚙️ Configuración")
     nombre_local = st.text_input("Local:", "EMI Master")
     tipo_local = st.selectbox("Tipo:", ["Matriz", "Sucursal 1", "Sucursal 2"])
-    
-    st.write("---")
     fecha_trabajo = st.date_input("📅 Fecha de Consulta", datetime.date.today())
     
     st.write("---")
-    st.header("💰 Saldos Iniciales")
+    st.header("💰 Estado de Caja")
     caja_chica = st.number_input("Caja Chica ($)", value=0.0)
     saldo_banco = st.number_input("Saldo Banco ($)", value=0.0)
 
 # --- CUERPO PRINCIPAL ---
-tab1, tab2, tab3 = st.tabs(["💰 VENTAS DEL DÍA", "📉 GASTOS (Fases sig.)", "📊 REPORTES"])
+tab1, tab2, tab3 = st.tabs(["💰 VENTAS", "💸 GASTOS Y PAGOS", "📊 REPORTES"])
 
+db = conectar_db()
+
+# --- MODULO DE VENTAS ---
 with tab1:
-    st.subheader(f"Registro de Ventas para el {fecha_trabajo}")
-    
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown(f'<div class="card">💵 Caja Actual<br><h2>$ {caja_chica:,.2f}</h2></div>', unsafe_allow_html=True)
-    with col_b:
-        st.markdown(f'<div class="card">🏦 Banco Actual<br><h2>$ {saldo_banco:,.2f}</h2></div>', unsafe_allow_html=True)
-
+    st.subheader(f"Registro de Ventas - {fecha_trabajo}")
     with st.form("form_ventas"):
         c1, c2, c3 = st.columns([2, 2, 1])
-        monto_v = c1.number_input("Monto Cobrado ($)", min_value=0.0)
-        destino = c2.selectbox("Destino del Dinero", ["Caja (Efectivo)", "Banco (Transferencia/Tarjeta)"])
-        nota = c3.text_input("Detalle")
-        
+        monto_v = c1.number_input("Monto Cobrado ($)", min_value=0.0, key="v_monto")
+        destino = c2.selectbox("Destino", ["Caja (Efectivo)", "Banco (Transferencia)"])
+        nota = c3.text_input("Nota/Cliente")
         if st.form_submit_button("REGISTRAR VENTA"):
-            db = conectar_db()
             if db:
-                try:
-                    sheet = db.worksheet("Movimientos")
-                    # Guardamos: Fecha, Tipo, Local, Sede, Monto, Detalle, Método
-                    fila = [str(fecha_trabajo), "INGRESO", nombre_local, tipo_local, monto_v, nota, destino]
-                    sheet.append_row(fila)
-                    st.success("✅ Venta registrada correctamente")
-                except Exception as e:
-                    st.error(f"Error al guardar en la nube: {e}")
+                fila = [str(fecha_trabajo), "INGRESO", nombre_local, tipo_local, monto_v, nota, destino]
+                db.worksheet("Movimientos").append_row(fila)
+                st.success("Venta guardada.")
 
-    # --- HISTORIAL Y EDICIÓN ---
-    st.write("---")
-    st.subheader("🔍 Historial de la Fecha")
-    db = conectar_db()
+# --- MODULO DE GASTOS CON AUTO-APRENDIZAJE ---
+with tab2:
+    st.subheader("📉 Registro de Gastos (Hormiga y Fijos)")
+    
+    # 1. Lógica de Memoria: Extraer nombres de proveedores previos
+    proveedores_conocidos = ["Nuevo Proveedor..."]
     if db:
         try:
-            data = db.worksheet("Movimientos").get_all_records()
-            df = pd.DataFrame(data)
-            if not df.empty:
-                # El sistema filtra automáticamente por la fecha elegida en el sidebar
-                df_filtrado = df[df['Fecha'] == str(fecha_trabajo)]
-                st.dataframe(df_filtrado, use_container_width=True)
-            else:
-                st.info("No hay datos en la nube aún.")
-        except:
-            st.warning("Pestaña 'Movimientos' no encontrada en tu Google Sheet.")
+            data_gastos = db.worksheet("Movimientos").get_all_records()
+            df_g = pd.DataFrame(data_gastos)
+            if not df_g.empty:
+                # Extraemos nombres únicos de la columna 'Detalle' donde el Tipo sea 'EGRESO'
+                nombres = df_g[df_g['Tipo'] == 'EGRESO']['Detalle'].unique().tolist()
+                proveedores_conocidos.extend(nombres)
+        except: pass
+
+    with st.form("form_gastos"):
+        col_g1, col_g2 = st.columns(2)
+        
+        # El sistema sugiere nombres ya usados
+        seleccion = col_g1.selectbox("Seleccionar Proveedor Registrado:", proveedores_conocidos)
+        
+        # Si no está en la lista, permite escribir uno nuevo
+        nombre_final = ""
+        if seleccion == "Nuevo Proveedor...":
+            nombre_final = col_g1.text_input("Nombre del nuevo proveedor/gasto:")
+        else:
+            nombre_final = seleccion
+
+        monto_g = col_g2.number_input("Valor del Gasto ($)", min_value=0.0)
+        tipo_g = st.radio("Tipo de Gasto:", ["Hormiga (Diario)", "Fijo (Mensual)"], horizontal=True)
+        
+        c_p1, c_p2 = st.columns(2)
+        pagado = c_p1.checkbox("¿Pagado ahora? (Se debita de Bancos)")
+        fecha_pago_sug = c_p2.date_input("Fecha programada de pago", fecha_trabajo)
+
+        if st.form_submit_button("REGISTRAR GASTO"):
+            if db and nombre_final:
+                metodo_g = "Banco" if pagado else "Pendiente"
+                fila_g = [str(fecha_trabajo), "EGRESO", nombre_local, tipo_local, monto_g, nombre_final, metodo_g, tipo_g]
+                db.worksheet("Movimientos").append_row(fila_g)
+                st.warning(f"Gasto de {nombre_final} registrado.")
+                if pagado: st.info("Monto debitado virtualmente del Saldo en Bancos.")
+
+# --- MODULO DE REPORTES (Vista Previa) ---
+with tab3:
+    st.subheader("📊 Análisis y Comparativa")
+    if db:
+        data = db.worksheet("Movimientos").get_all_records()
+        df = pd.DataFrame(data)
+        if not df.empty:
+            df_hoy = df[df['Fecha'] == str(fecha_trabajo)]
+            st.write(f"Resumen del día {fecha_trabajo}:")
+            st.dataframe(df_hoy)
+            
+            # Cálculo de Totales
+            ingresos = pd.to_numeric(df_hoy[df_hoy['Tipo'] == 'INGRESO']['Monto']).sum()
+            egresos = pd.to_numeric(df_hoy[df_hoy['Tipo'] == 'EGRESO']['Monto']).sum()
+            st.metric("Balance Neto del Día", f"$ {ingresos - egresos}", delta=f"{ingresos} Ingresos")
